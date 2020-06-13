@@ -112,6 +112,9 @@ add_library(
     s2e/Plugins/Coverage/TranslationBlockCoverage.cpp
     s2e/Plugins/Coverage/EdgeCoverage.cpp
 
+    #PeX
+    s2e/Plugins/pex/PeX.cpp
+
     # Misc plugins
     s2e/Plugins/Example.cpp
     s2e/Plugins/Analyzers/CacheSim.cpp
