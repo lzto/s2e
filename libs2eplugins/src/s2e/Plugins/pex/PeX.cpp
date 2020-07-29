@@ -27,6 +27,8 @@ void PeX::initialize() {
       config->getBool(getConfigKey() + ".traceBlockTranslation");
   m_traceBlockExecution =
       config->getBool(getConfigKey() + ".traceBlockExecution");
+  m_killWhenNotInRange =
+      config->getBool(getConfigKey() + ".killWhenNotInRange");
   processPCRange();
 
   auto* plugin = s2e()->getCorePlugin();
@@ -133,7 +135,7 @@ void PeX::slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc) {
       getDebugStream(state)<<"DestRange Reached "<<count<<" pc @ "
           <<hexval(pc)<<"\n";
     }
-    if (!isInRange(pc)) {
+    if ((m_killWhenNotInRange) && (!isInRange(pc))) {
       getDebugStream(state)<<"terminating state "<<count<<" pc @ "
           <<hexval(pc)<<"\n";
       e->terminateState(*state);

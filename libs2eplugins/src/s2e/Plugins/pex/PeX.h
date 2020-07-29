@@ -46,6 +46,7 @@ private:
   OSMonitor *m_monitor;
   bool m_traceBlockTranslation;
   bool m_traceBlockExecution;
+  bool m_killWhenNotInRange;
   void processPCRange();
   bool isInRange(uint64_t);
   bool isDestRange(uint64_t);
