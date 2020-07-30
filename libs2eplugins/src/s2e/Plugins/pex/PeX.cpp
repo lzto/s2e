@@ -31,7 +31,6 @@ void PeX::initialize() {
       config->getBool(getConfigKey() + ".killWhenNotInRange");
   processPCRange();
   processTargetStackInfo();
-
   auto* plugin = s2e()->getCorePlugin();
   // hook bb start
   plugin->onTranslateBlockStart.connect(
@@ -163,8 +162,8 @@ bool PeX::isTargetStack(std::vector<uint64_t>& stack) {
     return false;
   for (int i=0;i<depth;i++) {
     auto pair = targetStack[i];
-    auto lowpc = pair.first;
-    auto highpc = pair.second;
+    auto highpc = pair.first;
+    auto lowpc = pair.second;
     auto pc = stack[i];
     if (pc<lowpc)
       return false;
@@ -203,7 +202,7 @@ std::vector<uint64_t> PeX::unwindStack(S2EExecutionState *state) {
      <<i<<"] => " << hexval(stacklow + i*ptrSize) <<" = "
      <<hexval(stackPtr[i])<<"\n";
   }
-#else
+#endif
   // this is where we start
   int bpOffset = (bp - stacklow) / ptrSize;
   if (bpOffset<0 || bpOffset>=ptrCnt) { // there's an error
@@ -211,6 +210,12 @@ std::vector<uint64_t> PeX::unwindStack(S2EExecutionState *state) {
     goto end;
   }
   while (bpOffset < ptrCnt) {
+    auto retOffset = bpOffset + 1;
+    if (retOffset<0 || retOffset >= ptrCnt) {
+      // getDebugStream(state)<<" doesn't look like a valid stack here\n";
+      break;
+    }
+    stack.push_back(stackPtr[retOffset]);
     auto nextBp = stackPtr[bpOffset];
     auto nextBpOffset = (nextBp - stacklow) / ptrSize;
     if (nextBpOffset <= bpOffset) {
@@ -218,16 +223,9 @@ std::vector<uint64_t> PeX::unwindStack(S2EExecutionState *state) {
       break;
     }
     bpOffset = nextBpOffset;
-    auto retOffset = bpOffset + 1;
-    if (retOffset<0 || retOffset >= ptrCnt) {
-      // getDebugStream(state)<<" doesn't look like a valid stack here\n";
-      break;
-    }
-    stack.push_back(stackPtr[retOffset]);
   }
 end:
   return stack;
-#endif
 }
 
 void PeX::slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc) {
@@ -242,6 +240,12 @@ void PeX::slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc) {
       return;
     if (isDestRange(pc)) {
       auto stack = unwindStack(state);
+////////////////
+  getDebugStream(state)<<" === to match stack ===\n";
+  for (auto pc: stack)
+    getDebugStream(state)<<"  "<<hexval(pc)<<"\n";
+///////////////
+
       if (isTargetStack(stack)) {
         getDebugStream(state)<<"Target Stack Identified\n";
       }
