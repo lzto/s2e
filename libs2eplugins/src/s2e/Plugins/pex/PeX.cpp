@@ -30,6 +30,7 @@ void PeX::initialize() {
   m_killWhenNotInRange =
       config->getBool(getConfigKey() + ".killWhenNotInRange");
   processPCRange();
+  processTargetStackInfo();
 
   auto* plugin = s2e()->getCorePlugin();
   // hook bb start
@@ -48,8 +49,39 @@ void PeX::initialize() {
    */
   //plugin->onConcreteDataMemoryAccess.connect(
   //        sigc::mem_fun(*this, &PeX::onConcreteDataMemoryAccess));
-  m_monitor = static_cast<OSMonitor *>(s2e()->getPlugin("OSMonitor"));
+  os_monitor = static_cast<OSMonitor *>(s2e()->getPlugin("OSMonitor"));
 }
+
+void PeX::processTargetStackInfo() {
+  auto* config = s2e()->getConfig();
+  auto pcrangeFilePath = config->getString(getConfigKey() +".pcrange");
+  std::ifstream file(pcrangeFilePath);
+  if (!file.is_open())
+    return;
+  std::string line;
+  while (std::getline(file, line)) {
+    if (line=="---stack binary range---")
+      break;
+  }
+  while (std::getline(file, line)) {
+    if (line == "EOR") {
+      //end of range
+      break;
+    }
+    uint64_t pc1, pc2;
+    int found = line.find("[");
+    std::string str = line.substr(found+1);
+    std::sscanf(str.c_str(), "0x%lx,0x%lx",&pc1,&pc2);
+    pcrange_pair p;
+    if (pc1>pc2)
+      p = std::make_pair(pc1, pc2);
+    else
+      p = std::make_pair(pc2, pc2);
+    targetStack.push_back(p);
+  }
+  file.close();
+}
+
 void PeX::processPCRange() {
   auto* config = s2e()->getConfig();
   auto pcrangeFilePath = config->getString(getConfigKey() +".pcrange");
@@ -62,6 +94,10 @@ void PeX::processPCRange() {
       break;
   }
   while (std::getline(file, line)) {
+    if (line == "EOR") {
+      //end of range
+      break;
+    }
     uint64_t pc1, pc2;
     int found = line.find("[");
     std::string str = line.substr(found+1);
@@ -79,15 +115,15 @@ void PeX::processPCRange() {
 void PeX::slotTranslateBlockStart(ExecutionSignal *signal,
                                   S2EExecutionState *state,
                                   TranslationBlock *tb, uint64_t pc) {
-  if (!m_monitor->isKernelAddress(pc))
+  if (!os_monitor->isKernelAddress(pc))
     return;
   if (m_traceBlockTranslation) {
     // getDebugStream(state) <<"kernel Start
-    // @"<<hexval(m_monitor->getKernelStart())<<"\n";
+    // @"<<hexval(os_monitor->getKernelStart())<<"\n";
     getDebugStream(state) << "Translating kernel block at " << hexval(pc)
                           << "\n";
     // getDebugStream(state) << "Translating kernel block @ " <<
-    // hexval(pc-m_monitor->getKernelStart()) << "\n";
+    // hexval(pc-os_monitor->getKernelStart()) << "\n";
   }
 
   if (m_traceBlockExecution) {
@@ -121,8 +157,81 @@ bool PeX::isDestRange(uint64_t pc) {
   return true;
 }
 
+bool PeX::isTargetStack(std::vector<uint64_t>& stack) {
+  int depth = targetStack.size();
+  if (stack.size() < depth)
+    return false;
+  for (int i=0;i<depth;i++) {
+    auto pair = targetStack[i];
+    auto lowpc = pair.first;
+    auto highpc = pair.second;
+    auto pc = stack[i];
+    if (pc<lowpc)
+      return false;
+    if (pc>highpc)
+      return false;
+  }
+  return true;
+}
+
+#define PAGE_SIZE 0x1000
+#define PAGE_MASK ~(0x0fff)
+#define STACK_MAX_SIZE (PAGE_SIZE * 2)
+
+std::vector<uint64_t> PeX::unwindStack(S2EExecutionState *state) {
+  std::vector<uint64_t> stack;
+  // read out stack
+  auto pc = state->regs()->getPc();
+  stack.push_back(pc);
+  auto sp = state->regs()->getSp();
+  auto bp = state->regs()->getBp();
+  auto stacklow = sp & PAGE_MASK;
+  auto stackhigh = sp + STACK_MAX_SIZE;
+  getDebugStream(state)<<" stack pointer sp="<<hexval(sp)
+    <<" stack low = "<<hexval(stacklow)
+    <<" stack high = "<<hexval(stackhigh)<<"\n"
+    <<" base pointer[stack frame] bp="<<hexval(bp)<<"\n";
+  uint8_t stackSnapshot[STACK_MAX_SIZE];
+  state->mem()->read(stacklow, stackSnapshot, STACK_MAX_SIZE);
+  uint64_t* stackPtr = (uint64_t*)stackSnapshot;
+  auto ptrSize = sizeof(uint64_t);
+  auto ptrCnt = STACK_MAX_SIZE/ptrSize;
+#if 0
+  getDebugStream(state)<<" ===== STACK ==== \n";
+  for (int i=0;i<ptrCnt;i++) {
+    getDebugStream(state)<<"   ["
+     <<i<<"] => " << hexval(stacklow + i*ptrSize) <<" = "
+     <<hexval(stackPtr[i])<<"\n";
+  }
+#else
+  // this is where we start
+  int bpOffset = (bp - stacklow) / ptrSize;
+  if (bpOffset<0 || bpOffset>=ptrCnt) { // there's an error
+    getDebugStream(state)<<" error unwinding stack\n";
+    goto end;
+  }
+  while (bpOffset < ptrCnt) {
+    auto nextBp = stackPtr[bpOffset];
+    auto nextBpOffset = (nextBp - stacklow) / ptrSize;
+    if (nextBpOffset <= bpOffset) {
+      // getDebugStream(state)<<" doesn't look like a valid stack here\n";
+      break;
+    }
+    bpOffset = nextBpOffset;
+    auto retOffset = bpOffset + 1;
+    if (retOffset<0 || retOffset >= ptrCnt) {
+      // getDebugStream(state)<<" doesn't look like a valid stack here\n";
+      break;
+    }
+    stack.push_back(stackPtr[retOffset]);
+  }
+end:
+  return stack;
+#endif
+}
+
 void PeX::slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc) {
-  if (!m_monitor->isKernelAddress(pc)) {
+  if (!os_monitor->isKernelAddress(pc)) {
     return;
   }
   if (m_traceBlockExecution)
@@ -132,8 +241,10 @@ void PeX::slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc) {
     if (count<=1)
       return;
     if (isDestRange(pc)) {
-      getDebugStream(state)<<"DestRange Reached "<<count<<" pc @ "
-          <<hexval(pc)<<"\n";
+      auto stack = unwindStack(state);
+      if (isTargetStack(stack)) {
+        getDebugStream(state)<<"Target Stack Identified\n";
+      }
     }
     if ((m_killWhenNotInRange) && (!isInRange(pc))) {
       getDebugStream(state)<<"terminating state "<<count<<" pc @ "
@@ -153,10 +264,10 @@ void PeX::jumpToPc(S2EExecutionState *state, uint64_t pc) {
 void PeX::slotTranslateBlockEnd(ExecutionSignal *signal, S2EExecutionState *state,
         TranslationBlock *tb, uint64_t pc, bool staticTarget,
         uint64_t targetPc) {
-    if (!m_monitor->initialized()) {
+    if (!os_monitor->initialized()) {
         return;
     }
-    if (!m_monitor->isKernelAddress(pc)) {
+    if (!os_monitor->isKernelAddress(pc)) {
       return;
     }
 
@@ -185,7 +296,7 @@ void PeX::onExecuteDirectCall(S2EExecutionState *state, uint64_t pc) {
 
 void PeX::onTranslateInstructionStart(ExecutionSignal *signal,
           S2EExecutionState *state, TranslationBlock *tb, uint64_t pc) {
-  if (!m_monitor->isKernelAddress(pc))
+  if (!os_monitor->isKernelAddress(pc))
     return;
   signal->connect(sigc::mem_fun(*this, &PeX::onInstruction));
 }
@@ -196,7 +307,7 @@ void PeX::onInstruction(S2EExecutionState *state, uint64_t pc) {
 void PeX::onConcreteDataMemoryAccess(S2EExecutionState *state, uint64_t address,
         uint64_t value, uint8_t size, unsigned flags) {
   uint64_t pc = state->regs()->getPc();
-  if (!m_monitor->isKernelAddress(pc))
+  if (!os_monitor->isKernelAddress(pc))
     return;
   getDebugStream(state) << "PC:"<<hexval(pc)<<" access "
       << hexval(size) <<" bytes of "

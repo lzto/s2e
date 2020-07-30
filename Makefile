@@ -63,7 +63,8 @@ FIND_CONFIG_SOURCE=$(shell find $(1) -name 'configure' -o -name 'CMakeLists.txt'
 
 # TODO: figure out how to automatically get the latest version without
 # having to update this URL.
-GUEST_TOOLS_BINARIES_URL=https://github.com/S2E/s2e/releases/download/v2.0.0/
+#GUEST_TOOLS_BINARIES_URL=https://github.com/S2E/s2e/releases/download/v2.0.0/
+GUEST_TOOLS_BINARIES_URL=https://znbs.space/s2e-blob/v2.0.0/
 
 # LLVM variables
 LLVM_BUILD?=$(S2E_BUILD)

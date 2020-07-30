@@ -10,7 +10,7 @@
 #include <s2e/Plugins/OSMonitors/ModuleDescriptor.h>
 #include <s2e/S2EExecutionState.h>
 #include <utility>
-#include <list>
+#include <vector>
 namespace s2e {
 namespace plugins {
 
@@ -43,19 +43,23 @@ public:
 protected:
 
 private:
-  OSMonitor *m_monitor;
+  OSMonitor *os_monitor;
   bool m_traceBlockTranslation;
   bool m_traceBlockExecution;
   bool m_killWhenNotInRange;
   void processPCRange();
+  void processTargetStackInfo();
   bool isInRange(uint64_t);
   bool isDestRange(uint64_t);
+  bool isTargetStack(std::vector<uint64_t>&);
+
   typedef std::pair<uint64_t,uint64_t> pcrange_pair;
-  typedef std::list<pcrange_pair> PCRange;
-  PCRange pcrange;
+  typedef std::vector<pcrange_pair> PCRange;
+  PCRange pcrange, targetStack;
 
   std::map<uint64_t, uint64_t> pc2pc;
   void jumpToPc(S2EExecutionState *state, uint64_t pc);
+  std::vector<uint64_t> unwindStack(S2EExecutionState *state);
 };
 
 } // namespace plugins

@@ -62,7 +62,6 @@ if(WITH_TARGET MATCHES "s2e")
     set(LIBS ${LIBS} boost_serialization
                      boost_system
                      boost_regex)
-    set(LIBS ${LIBS} bfd)
 endif()
 
 set(LIBS ${LIBS} ${LIBCOROUTINE_LIBRARY_DIR}/libcoroutine.a ${FSIGCXX_LIBRARY_DIR}/libfsigc++.a ${CAPSTONE_LIB_DIR}/libcapstone.a pthread glib-2.0 bsd)
