@@ -789,12 +789,17 @@ static void gen_helper_in_func(int ot, TCGv v, TCGv_i32 n) {
 static void gen_helper_out_func(int ot, TCGv_i32 v, TCGv_i32 n) {
     switch (ot) {
         case 0:
+            // this is stupid but why are we getting garbage value
+            tcg_gen_andi_i32(n, n, 0xff);
             gen_helper_outb(v, n);
             break;
         case 1:
+            tcg_gen_andi_i32(n, n, 0xffff);
             gen_helper_outw(v, n);
             break;
         case 2:
+            // already 32bit no need to do bit mask again
+            // tcg_gen_andi_i32(n,n, 0xffffffff);
             gen_helper_outl(v, n);
             break;
     }
