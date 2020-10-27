@@ -31,18 +31,22 @@ namespace s2e {
 
 enum SymbolicHardwareAccessType { SYMB_MMIO, SYMB_DMA, SYMB_PORT };
 
+class S2EExecutionState;
+
 class SymbolicPortHook {
 public:
     /**
      * This is a callback to check whether some port returns symbolic values.
      * An interested plugin can use it. Only one plugin can use it at a time.
-     * This is necessary tp speedup checks (and avoid using signals)
+     * This is necessary to speedup checks (and avoid using signals)
      */
-    typedef bool (*SYMB_PORT_CHECK)(uint16_t port, void *opaque);
-    typedef klee::ref<klee::Expr> (*SYMB_PORT_READ)(uint16_t port, unsigned size, uint64_t concreteValue, void *opaque);
+    typedef bool (*SYMB_PORT_CHECK)(S2EExecutionState *state, uint16_t port, void *opaque);
+    typedef klee::ref<klee::Expr> (*SYMB_PORT_READ)(S2EExecutionState *state, uint16_t port, unsigned size,
+                                                    uint64_t concreteValue, void *opaque);
 
     /* Returns whether to call the native cpu_out* handler */
-    typedef bool (*SYMB_PORT_WRITE)(uint16_t port, const klee::ref<klee::Expr> &value, void *opaque);
+    typedef bool (*SYMB_PORT_WRITE)(S2EExecutionState *state, uint16_t port, const klee::ref<klee::Expr> &value,
+                                    void *opaque);
 
     void *m_opaque;
     SYMB_PORT_CHECK m_isSymbolic;
@@ -68,33 +72,35 @@ public:
         return m_isSymbolic != nullptr;
     }
 
-    inline bool symbolic(uint16_t port) const {
+    inline bool symbolic(S2EExecutionState *state, uint16_t port) const {
         if (m_isSymbolic) {
-            return m_isSymbolic(port, m_opaque);
+            return m_isSymbolic(state, port, m_opaque);
         }
         return false;
     }
 
-    inline klee::ref<klee::Expr> read(uint16_t port, unsigned size, uint64_t concreteValue) const {
+    inline klee::ref<klee::Expr> read(S2EExecutionState *state, uint16_t port, unsigned size,
+                                      uint64_t concreteValue) const {
         assert(m_readCb);
-        return m_readCb(port, size, concreteValue, m_opaque);
+        return m_readCb(state, port, size, concreteValue, m_opaque);
     }
 
-    inline bool write(uint16_t port, const klee::ref<klee::Expr> &value) {
+    inline bool write(S2EExecutionState *state, uint16_t port, const klee::ref<klee::Expr> &value) {
         assert(m_writeCb);
-        return m_writeCb(port, value, m_opaque);
+        return m_writeCb(state, port, value, m_opaque);
     }
 };
 
 class SymbolicMemoryHook {
 public:
-    typedef bool (*SYMB_MEM_CHECK)(struct MemoryDesc *mr, uint64_t physaddress, uint64_t size, void *opaque);
-    typedef klee::ref<klee::Expr> (*SYMB_MEM_READ)(struct MemoryDesc *mr, uint64_t physaddress,
-                                                   const klee::ref<klee::Expr> &value, SymbolicHardwareAccessType type,
-                                                   void *opaque);
+    typedef bool (*SYMB_MEM_CHECK)(S2EExecutionState *state, struct MemoryDesc *mr, uint64_t physaddress, uint64_t size,
+                                   void *opaque);
+    typedef klee::ref<klee::Expr> (*SYMB_MEM_READ)(S2EExecutionState *state, struct MemoryDesc *mr,
+                                                   uint64_t physaddress, const klee::ref<klee::Expr> &value,
+                                                   SymbolicHardwareAccessType type, void *opaque);
 
-    typedef void (*SYMB_MEM_WRITE)(struct MemoryDesc *mr, uint64_t physaddress, const klee::ref<klee::Expr> &value,
-                                   SymbolicHardwareAccessType type, void *opaque);
+    typedef void (*SYMB_MEM_WRITE)(S2EExecutionState *state, struct MemoryDesc *mr, uint64_t physaddress,
+                                   const klee::ref<klee::Expr> &value, SymbolicHardwareAccessType type, void *opaque);
 
 private:
     void *m_opaque;
@@ -121,24 +127,24 @@ public:
         return m_isSymbolic != nullptr;
     }
 
-    inline bool symbolic(struct MemoryDesc *mr, uint64_t physAddress, uint64_t size) const {
+    inline bool symbolic(S2EExecutionState *state, struct MemoryDesc *mr, uint64_t physAddress, uint64_t size) const {
         if (m_isSymbolic) {
-            return m_isSymbolic(mr, physAddress, size, m_opaque);
+            return m_isSymbolic(state, mr, physAddress, size, m_opaque);
         }
         return false;
     }
 
-    inline klee::ref<klee::Expr> read(struct MemoryDesc *mr, uint64_t physAddress,
+    inline klee::ref<klee::Expr> read(S2EExecutionState *state, struct MemoryDesc *mr, uint64_t physAddress,
                                       const klee::ref<klee::Expr> &concolicValue,
                                       SymbolicHardwareAccessType type) const {
         assert(m_readCb);
-        return m_readCb(mr, physAddress, concolicValue, type, m_opaque);
+        return m_readCb(state, mr, physAddress, concolicValue, type, m_opaque);
     }
 
-    inline void write(struct MemoryDesc *mr, uint64_t physAddress, const klee::ref<klee::Expr> &val,
-                      SymbolicHardwareAccessType type) const {
+    inline void write(S2EExecutionState *state, struct MemoryDesc *mr, uint64_t physAddress,
+                      const klee::ref<klee::Expr> &val, SymbolicHardwareAccessType type) const {
         assert(m_writeCb);
-        m_writeCb(mr, physAddress, val, type, m_opaque);
+        m_writeCb(state, mr, physAddress, val, type, m_opaque);
     }
 
     inline bool readable() const {

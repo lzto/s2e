@@ -19,7 +19,7 @@
 /// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 /// SOFTWARE.
 ///
-
+#if 0
 #include <s2e/ConfigFile.h>
 #include <s2e/S2E.h>
 #include <s2e/SymbolicHardwareHook.h>
@@ -276,3 +276,4 @@ static void symbhw_symbwrite(struct MemoryDesc *mr, uint64_t physaddress, const 
 } // namespace hw
 } // namespace plugins
 } // namespace s2e
+#endif

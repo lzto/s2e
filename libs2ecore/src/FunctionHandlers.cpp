@@ -254,6 +254,7 @@ static void handlerTraceMmioAccess(Executor *executor, ExecutionState *state, kl
                                    std::vector<klee::ref<klee::Expr>> &args) {
     assert(args.size() == 4);
 
+    S2EExecutionState *s2eState = static_cast<S2EExecutionState *>(state);
     auto symbolicPhysAddress = args[0];
     if (!g_symbolicMemoryHook.hasHook()) {
         // Avoid forced concretizations if symbolic hardware is not enabled
@@ -262,10 +263,12 @@ static void handlerTraceMmioAccess(Executor *executor, ExecutionState *state, kl
     }
 
     uint64_t physAddress = state->toConstant(symbolicPhysAddress, "MMIO address")->getZExtValue();
+    // S2EExecutionState *s2eState = static_cast<S2EExecutionState *>(state);
+    // g_s2e->getDebugStream(s2eState) << "handlerTraceMmioAccess: " << hexval(physAddress) << "\n";
     klee::ref<Expr> value = args[1];
     unsigned size = cast<klee::ConstantExpr>(args[2])->getZExtValue();
 
-    if (!g_symbolicMemoryHook.symbolic(nullptr, physAddress, size)) {
+    if (!g_symbolicMemoryHook.symbolic(s2eState, nullptr, physAddress, size)) {
         state->bindLocal(target, value);
         return;
     }
@@ -274,10 +277,10 @@ static void handlerTraceMmioAccess(Executor *executor, ExecutionState *state, kl
     bool isWrite = cast<klee::ConstantExpr>(args[3])->getZExtValue();
 
     if (isWrite) {
-        g_symbolicMemoryHook.write(nullptr, physAddress, resizedValue, SYMB_MMIO);
+        g_symbolicMemoryHook.write(s2eState, nullptr, physAddress, resizedValue, SYMB_MMIO);
         state->bindLocal(target, value);
     } else {
-        klee::ref<Expr> ret = g_symbolicMemoryHook.read(nullptr, physAddress, resizedValue, SYMB_MMIO);
+        klee::ref<Expr> ret = g_symbolicMemoryHook.read(s2eState, nullptr, physAddress, resizedValue, SYMB_MMIO);
         assert(ret->getWidth() == resizedValue->getWidth());
         ret = klee::ZExtExpr::create(ret, klee::Expr::Int64);
         state->bindLocal(target, ret);
@@ -294,12 +297,12 @@ static void handlerTracePortAccess(Executor *executor, ExecutionState *state, kl
     klee::Expr::Width width = cast<klee::ConstantExpr>(args[2])->getZExtValue();
     klee::ref<Expr> resizedValue = klee::ExtractExpr::create(inputValue, 0, width);
     bool isWrite = cast<klee::ConstantExpr>(args[3])->getZExtValue();
-    int isSymb = g_symbolicPortHook.symbolic(port->getZExtValue());
+    int isSymb = g_symbolicPortHook.symbolic(s2eState, port->getZExtValue());
 
     if (isWrite) {
         bool callOrig = true;
         if (isSymb) {
-            callOrig = g_symbolicPortHook.write(port->getZExtValue(), resizedValue);
+            callOrig = g_symbolicPortHook.write(s2eState, port->getZExtValue(), resizedValue);
         }
 
         if (callOrig) {
@@ -316,7 +319,8 @@ static void handlerTracePortAccess(Executor *executor, ExecutionState *state, kl
         klee::ref<klee::ConstantExpr> concreteInputValue = cast<klee::ConstantExpr>(resizedValue);
         klee::ref<Expr> outputValue = concreteInputValue;
         if (isSymb) {
-            outputValue = g_symbolicPortHook.read(port->getZExtValue(), width / 8, concreteInputValue->getZExtValue());
+            outputValue =
+                g_symbolicPortHook.read(s2eState, port->getZExtValue(), width / 8, concreteInputValue->getZExtValue());
         }
 
         state->bindLocal(target, klee::ZExtExpr::create(outputValue, klee::Expr::Int64));

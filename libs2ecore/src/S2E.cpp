@@ -482,6 +482,7 @@ void S2E::initPlugins() {
 
 void S2E::initExecutor() {
     m_s2eExecutor = new S2EExecutor(this, m_TCGLLVMTranslator, this);
+    // need to initialize state immediately after this
 }
 
 llvm::raw_ostream &S2E::getStream(llvm::raw_ostream &stream, const S2EExecutionState *state) const {

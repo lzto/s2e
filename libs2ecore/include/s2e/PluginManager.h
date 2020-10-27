@@ -55,6 +55,7 @@ public:
     ~PluginManager();
 
     bool initialize(S2E *_s2e, ConfigFile *cfg);
+    void pluginInit2(S2EExecutionState *);
 
     CorePlugin *getCorePlugin() const {
         return m_corePlugin;

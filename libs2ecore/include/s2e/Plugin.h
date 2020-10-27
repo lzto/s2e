@@ -90,6 +90,8 @@ public:
         m_CachedPluginState = nullptr;
     }
 
+    virtual void pluginInit2(S2EExecutionState *stat){};
+
     virtual bool getProperty(S2EExecutionState *state, const std::string &name, std::string &value) {
         return false;
     }

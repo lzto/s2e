@@ -78,6 +78,10 @@ protected:
     /// Terminate if a segment fault occurs
     bool m_terminateOnSegfault;
 
+    /// console log - dmesg buffer address
+    uint64_t m_logBuf;
+    uint64_t m_logBufLen;
+
     uint64_t m_commandVersion;
     uint64_t m_commandSize;
 

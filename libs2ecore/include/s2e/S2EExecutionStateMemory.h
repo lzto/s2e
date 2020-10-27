@@ -29,6 +29,17 @@
 #include <klee/IConcretizer.h>
 #include "AddressSpaceCache.h"
 
+/*
+ * for port io address space
+ */
+#define PORT_IO_ADDRESS_SPACE_SIZE 0x10000
+#define PORT_IO_ADDRESS_SPACE_LOW 0
+#define PORT_IO_ADDRESS_SPACE_HIGH 0xffff
+
+typedef struct PCI_HEADER {
+    uint32_t reg[0x10];
+} PCI_HEADER;
+
 namespace s2e {
 
 enum AddressType { VirtualAddress, PhysicalAddress, HostAddress };
@@ -299,6 +310,12 @@ public:
     /// \return True if the string could be read, false otherwise
     ///
     bool readUnicodeString(uint64_t address, std::string &s, unsigned maxLen = 256);
+
+    /// port io address space
+    uint8_t portIOMem[PORT_IO_ADDRESS_SPACE_SIZE];
+    /// per state PCI device header for our symbolic device
+    /// version 1 size is 0x40
+    PCI_HEADER sfpPCIDeviceHeader;
 };
 
 } // namespace s2e

@@ -343,12 +343,14 @@ S2EExecutor::S2EExecutor(S2E *s2e, TCGLLVMTranslator *translator, InterpreterHan
 
     //__DEFINE_EXT_FUNCTION(s2e_on_tlb_miss)
     __DEFINE_EXT_FUNCTION(s2e_on_page_fault)
+
     __DEFINE_EXT_FUNCTION(s2e_is_port_symbolic)
     __DEFINE_EXT_FUNCTION(s2e_is_mmio_symbolic)
     __DEFINE_EXT_FUNCTION(se_is_mmio_symbolic_b)
     __DEFINE_EXT_FUNCTION(se_is_mmio_symbolic_w)
     __DEFINE_EXT_FUNCTION(se_is_mmio_symbolic_l)
     __DEFINE_EXT_FUNCTION(se_is_mmio_symbolic_q)
+
     __DEFINE_EXT_FUNCTION(se_is_vmem_symbolic)
 
     __DEFINE_EXT_FUNCTION(s2e_on_privilege_change);
@@ -1821,6 +1823,9 @@ void S2EExecutor::updateStates(klee::ExecutionState *current) {
 
 void s2e_create_initial_state() {
     g_s2e_state = g_s2e->getExecutor()->createInitialState();
+    // give plugin a chance to put their own stuff in the s2e state --
+    // so that plugin state can be forked and versioned with s2e state
+    g_s2e->pluginInit2(g_s2e_state);
 }
 
 void s2e_initialize_execution(int execute_always_klee) {

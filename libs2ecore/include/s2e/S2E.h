@@ -243,6 +243,10 @@ public:
         return m_s2eExecutor;
     }
 
+    void pluginInit2(S2EExecutionState *stat) {
+        m_pluginManager.pluginInit2(stat);
+    }
+
     // XXX: A plugin can hold cached state information. When a state is deleted,
     // remove all the cached info from all plugins.
     void refreshPlugins() {

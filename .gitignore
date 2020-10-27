@@ -4,3 +4,6 @@
 /s2e.files
 /s2e.cflags
 /s2e.cxxflags
+.scopefile
+cscope.out
+tags

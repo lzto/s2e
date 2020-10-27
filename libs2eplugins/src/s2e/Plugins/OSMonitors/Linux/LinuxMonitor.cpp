@@ -161,6 +161,8 @@ void LinuxMonitor::handleInit(S2EExecutionState *state, const S2E_LINUXMON_COMMA
     m_currentTaskAddr = cmd.Init.current_task_address;
     m_taskStructPidOffset = cmd.Init.task_struct_pid_offset;
     m_taskStructTgidOffset = cmd.Init.task_struct_tgid_offset;
+    m_logBuf = cmd.Init.log_buf;
+    m_logBufLen = cmd.Init.log_buf_len;
 
     completeInitialization(state);
 

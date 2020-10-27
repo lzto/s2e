@@ -154,4 +154,9 @@ Plugin *PluginManager::getPlugin(const std::string &name) const {
 void PluginManager::refreshPlugins() {
     foreach2 (it, m_activePluginsList.begin(), m_activePluginsList.end()) { (*it)->refresh(); }
 }
+
+void PluginManager::pluginInit2(S2EExecutionState *stat) {
+    foreach2 (it, m_activePluginsList.begin(), m_activePluginsList.end()) { (*it)->pluginInit2(stat); }
+}
+
 } // namespace s2e

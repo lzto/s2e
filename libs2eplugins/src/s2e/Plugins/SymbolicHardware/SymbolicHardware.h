@@ -19,7 +19,7 @@
 /// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 /// SOFTWARE.
 ///
-
+#if 0
 #ifndef S2E_PLUGINS_SymbolicHardware_H
 #define S2E_PLUGINS_SymbolicHardware_H
 
@@ -85,3 +85,4 @@ public:
 } // namespace s2e
 
 #endif // S2E_PLUGINS_SymbolicHardware_H
+#endif

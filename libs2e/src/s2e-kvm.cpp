@@ -270,6 +270,7 @@ void S2EKVM::init(void) {
     // after s2e is inited.
     init_s2e_libcpu_interface(&g_sqi);
 
+    // do this before initialize plugins
     s2e_create_initial_state();
 #endif
 

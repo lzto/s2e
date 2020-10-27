@@ -31,8 +31,9 @@ extern "C" {
 unsigned g_s2e_enable_mmio_checks = 0;
 }
 
-namespace s2e {
+extern s2e::S2EExecutionState *g_s2e_state;
 
+namespace s2e {
 SymbolicPortHook g_symbolicPortHook;
 SymbolicMemoryHook g_symbolicMemoryHook;
 
@@ -41,30 +42,31 @@ void SymbolicHardwareHookEnableMmioCallbacks(bool enable) {
 }
 } // namespace s2e
 
+// FIXME: s2e state
 int s2e_is_port_symbolic(uint64_t port) {
-    return s2e::g_symbolicPortHook.symbolic(port);
+    return s2e::g_symbolicPortHook.symbolic(g_s2e_state, port);
 }
 
 int s2e_is_mmio_symbolic(uint64_t phys_addr, unsigned size) {
-    return s2e::g_symbolicMemoryHook.symbolic(nullptr, phys_addr, size);
+    return s2e::g_symbolicMemoryHook.symbolic(g_s2e_state, nullptr, phys_addr, size);
 }
 
 int se_is_mmio_symbolic(struct MemoryDesc *mr, uint64_t address, uint64_t size) {
-    return s2e::g_symbolicMemoryHook.symbolic(mr, address, size);
+    return s2e::g_symbolicMemoryHook.symbolic(g_s2e_state, mr, address, size);
 }
 
 int se_is_mmio_symbolic_b(struct MemoryDesc *mr, uint64_t address) {
-    return s2e::g_symbolicMemoryHook.symbolic(mr, address, 1);
+    return s2e::g_symbolicMemoryHook.symbolic(g_s2e_state, mr, address, 1);
 }
 
 int se_is_mmio_symbolic_w(struct MemoryDesc *mr, uint64_t address) {
-    return s2e::g_symbolicMemoryHook.symbolic(mr, address, 2);
+    return s2e::g_symbolicMemoryHook.symbolic(g_s2e_state, mr, address, 2);
 }
 
 int se_is_mmio_symbolic_l(struct MemoryDesc *mr, uint64_t address) {
-    return s2e::g_symbolicMemoryHook.symbolic(mr, address, 4);
+    return s2e::g_symbolicMemoryHook.symbolic(g_s2e_state, mr, address, 4);
 }
 
 int se_is_mmio_symbolic_q(struct MemoryDesc *mr, uint64_t address) {
-    return s2e::g_symbolicMemoryHook.symbolic(mr, address, 8);
+    return s2e::g_symbolicMemoryHook.symbolic(g_s2e_state, mr, address, 8);
 }
