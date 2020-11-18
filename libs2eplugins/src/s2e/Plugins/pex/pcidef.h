@@ -41,11 +41,13 @@
 // allocate a large I/O memory map for this purpose.
 // https://www.intel.com/content/www/us/en/programmable/support/support-resources/knowledge-base/solutions/rd08152011_738.html
 // IO address space
-#define BAR_HMASK 0xffffff00
+// #define BAR_HMASK 0xffffff00
 // MMIO memory address space
-//#define BAR_HMASK 0xffff0000
+#define BAR_HMASK 0xfff80000
 
-#define BAR_INIT_VALUE 0x01
+// 0 means mmio bar
+// 1 means pio bar
+#define BAR_INIT_VALUE 0x0
 
 #define PCI_ENABLE_BIT 0x80000000
 #endif

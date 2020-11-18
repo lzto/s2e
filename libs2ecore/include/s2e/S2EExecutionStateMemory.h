@@ -67,6 +67,7 @@ protected:
 
 public:
     S2EExecutionStateMemory();
+    ~S2EExecutionStateMemory();
 
     void initialize(klee::AddressSpace *addressSpace, AddressSpaceCache *asCache, const bool *active,
                     klee::IAddressSpaceNotification *notification, klee::IConcretizer *concretizer,

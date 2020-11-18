@@ -262,9 +262,12 @@ static void handlerTraceMmioAccess(Executor *executor, ExecutionState *state, kl
         return;
     }
 
-    uint64_t physAddress = state->toConstant(symbolicPhysAddress, "MMIO address")->getZExtValue();
-    // S2EExecutionState *s2eState = static_cast<S2EExecutionState *>(state);
-    // g_s2e->getDebugStream(s2eState) << "handlerTraceMmioAccess: " << hexval(physAddress) << "\n";
+    uint64_t virtualAddress = state->toConstant(symbolicPhysAddress, "MMIO address")->getZExtValue();
+    uint64_t physAddress = s2eState->mem()->getPhysicalAddress(virtualAddress);
+#if 0
+    g_s2e->getDebugStream(s2eState) << "handlerTraceMmioAccess: paddr " << hexval(physAddress) << "\n";
+#endif
+
     klee::ref<Expr> value = args[1];
     unsigned size = cast<klee::ConstantExpr>(args[2])->getZExtValue();
 
@@ -272,7 +275,6 @@ static void handlerTraceMmioAccess(Executor *executor, ExecutionState *state, kl
         state->bindLocal(target, value);
         return;
     }
-
     klee::ref<Expr> resizedValue = klee::ExtractExpr::create(value, 0, size * 8);
     bool isWrite = cast<klee::ConstantExpr>(args[3])->getZExtValue();
 
@@ -283,6 +285,7 @@ static void handlerTraceMmioAccess(Executor *executor, ExecutionState *state, kl
         klee::ref<Expr> ret = g_symbolicMemoryHook.read(s2eState, nullptr, physAddress, resizedValue, SYMB_MMIO);
         assert(ret->getWidth() == resizedValue->getWidth());
         ret = klee::ZExtExpr::create(ret, klee::Expr::Int64);
+        g_s2e->getDebugStream(s2eState) << "symbolic mmio value = " << ret << "\n";
         state->bindLocal(target, ret);
     }
 }

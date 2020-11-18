@@ -121,6 +121,8 @@ static ref<Expr> io_read_chk(S2EExecutionState *state, const CPUTLBEntry &tlb, t
     env->mem_io_pc = (uintptr_t) retaddr;
     state->setMemIoVaddr(ConstantExpr::create(addr, sizeof(target_ulong) * 8));
 
+    // tcg_llvm_trace_mmio_access(addr, 0, Expr::getMinBytesForWidth(width), 0);
+
     if (is_notdirty_ops(ops)) {
         ret = state->mem()->read(tlb.addend + addr, width, HostAddress);
         goto end;

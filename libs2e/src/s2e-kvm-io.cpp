@@ -65,6 +65,7 @@ static void abort_and_retranslate_if_needed() {
 
 uint64_t s2e_kvm_mmio_read(target_phys_addr_t addr, unsigned size) {
     int is_apic_tpr_access = 0;
+    // libcpu_log("s2e_kvm_mmio_read @ 0x%lx\n", (uint64_t) addr);
 
     ++g_stats.mmio_reads;
 

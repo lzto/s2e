@@ -1842,11 +1842,13 @@ void s2e_register_cpu(CPUX86State *cpu_env) {
 }
 
 // TODO: remove unused params
+#if 0
 void s2e_register_ram(MemoryDesc *region, uint64_t start_address, uint64_t size, uint64_t host_address,
                       int is_shared_concrete, int save_on_context_switch, const char *name) {
     g_s2e->getExecutor()->registerRam(g_s2e_state, region, start_address, size, host_address, is_shared_concrete,
                                       save_on_context_switch, name);
 }
+#endif
 
 void s2e_register_ram2(const char *name, uint64_t host_address, uint64_t size, int is_shared_concrete) {
     g_s2e->getExecutor()->registerRam(g_s2e_state, nullptr, -1, size, host_address, is_shared_concrete, false, name);

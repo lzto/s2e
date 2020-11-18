@@ -29,6 +29,9 @@ public:
     PeX(S2E *s2e) : Plugin(s2e) {
     }
     ~PeX() {
+        // release the bar memory
+        for (auto ptr : barMMIO)
+            free(ptr);
     }
 
     void initialize();
@@ -37,6 +40,9 @@ public:
     void slotOnPortAccess(S2EExecutionState *, KleeExprRef port, KleeExprRef value, bool isWrite);
     void slotOnConcreteDataMemoryAccess(S2EExecutionState *, uint64_t vaddr, uint64_t value, uint8_t size,
                                         unsigned flags);
+    void onBeforeSymbolicDataMemoryAccess(S2EExecutionState *state, klee::ref<klee::Expr> addr,
+                                          klee::ref<klee::Expr> value, bool isWrite);
+
     bool isPortSymbolic(S2EExecutionState *, uint16_t port);
     bool isMmioSymbolic(S2EExecutionState *, uint64_t physAddr);
     // IO address space
@@ -51,10 +57,10 @@ public:
     void slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc);
     void onExecuteDirectCall(S2EExecutionState *state, uint64_t pc);
     void onExecuteIndirectCall(S2EExecutionState *state, uint64_t pc);
+#endif
     void onTranslateInstructionStart(ExecutionSignal *signal, S2EExecutionState *state, TranslationBlock *tb,
                                      uint64_t pc);
     void onInstruction(S2EExecutionState *state, uint64_t pc);
-#endif
 
 private:
     OSMonitor *os_monitor;
@@ -67,19 +73,22 @@ private:
     uint32_t reg_vid;
     uint32_t reg_pid;
 
+    std::vector<uint8_t *> barMMIO;
+    void initBarMMIO();
+
     // PCI specific
-    void writeBAR(S2EExecutionState *, uint32_t reg, uint32_t value);
-    bool fallsIntoBar(S2EExecutionState *, uint64_t phy_addr);
+    void configBAR(S2EExecutionState *, uint32_t reg, uint32_t value);
+    int fallsIntoBar(S2EExecutionState *, uint64_t phy_addr);
     void dumpbar(S2EExecutionState *);
-    uint32_t getPortIORegister(uint32_t addr) {
+    uint32_t getPortIORegister(S2EExecutionState *state, uint32_t addr) {
         uint32_t ret;
-        memcpy(&ret, &(g_s2e_state->mem()->portIOMem[addr]), sizeof(uint32_t));
+        memcpy(&ret, &(state->mem()->portIOMem[addr]), sizeof(uint32_t));
         return ret;
     }
     void setPortIORegister(uint32_t addr, uint32_t val) {
         memcpy(&(g_s2e_state->mem()->portIOMem[addr]), &val, sizeof(uint32_t));
     }
-    bool isOurDevice();
+    bool isOurDevice(S2EExecutionState *);
 
     // offset 0~3 - the byte offset
     uint8_t getPCIReg8(S2EExecutionState *s, int regidx, int offset) {
@@ -105,6 +114,8 @@ private:
             return state->mem()->sfpPCIDeviceHeader;
         return g_s2e_state->mem()->sfpPCIDeviceHeader;
     }
+
+    void dumpDmesg(S2EExecutionState *state);
 
 #if 0
     void processPCRange();

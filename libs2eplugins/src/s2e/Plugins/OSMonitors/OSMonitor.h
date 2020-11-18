@@ -97,6 +97,12 @@ protected:
 
 public:
     virtual uint64_t getKernelStart() const = 0;
+    virtual uint64_t getDmesgAddress() const {
+        return 0;
+    };
+    virtual uint64_t getDmesgLen() const {
+        return 0;
+    };
 
     /// Returns \c true if the given program counter is located within the kernel space
     inline bool isKernelAddress(uint64_t pc) const {

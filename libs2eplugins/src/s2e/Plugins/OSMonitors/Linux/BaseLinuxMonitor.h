@@ -142,6 +142,14 @@ public:
         return m_kernelStartAddress;
     }
 
+    virtual uint64_t getDmesgAddress() const {
+        return m_logBuf;
+    }
+
+    virtual uint64_t getDmesgLen() const {
+        return m_logBufLen;
+    }
+
     /// Get the base address and size of the stack
     virtual bool getCurrentStack(S2EExecutionState *state, uint64_t *base, uint64_t *size);
 

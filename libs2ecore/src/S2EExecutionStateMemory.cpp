@@ -41,6 +41,9 @@ S2EExecutionStateMemory::S2EExecutionStateMemory()
       m_concretizer(nullptr) {
 }
 
+S2EExecutionStateMemory::~S2EExecutionStateMemory() {
+}
+
 void S2EExecutionStateMemory::initialize(klee::AddressSpace *addressSpace, AddressSpaceCache *asCache,
                                          const bool *active, klee::IAddressSpaceNotification *notification,
                                          klee::IConcretizer *concretizer, const klee::ObjectStatePtr &dirtyMask) {

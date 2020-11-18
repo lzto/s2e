@@ -134,7 +134,7 @@ DATA_TYPE glue(glue(io_read, SUFFIX), MMUSUFFIX)(CPUArchState *env, target_phys_
 
 #if defined(CONFIG_SYMBEX) && defined(CONFIG_SYMBEX_MP)
     // Can't handle symbolic mmio from helpers
-    if (unlikely(tcg_is_dyngen_addr(retaddr) && g_sqi.mem.is_mmio_symbolic(addr, DATA_SIZE))) {
+    if (unlikely(tcg_is_dyngen_addr(retaddr) && g_sqi.mem.is_mmio_symbolic(physaddr, DATA_SIZE))) {
         g_sqi.exec.switch_to_symbolic(retaddr);
     }
 
@@ -234,7 +234,7 @@ DATA_TYPE glue(glue(io_read_chk, SUFFIX), MMUSUFFIX)(CPUArchState *env, target_p
     res.res = glue(glue(io_read, SUFFIX), MMUSUFFIX)(env, origaddr, addr, retaddr);
 
 end:
-    tcg_llvm_trace_mmio_access(addr, res.res, DATA_SIZE, 0);
+    res.res = tcg_llvm_trace_mmio_access(addr, res.res, DATA_SIZE, 0);
     SE_SET_MEM_IO_VADDR(env, 0, 1);
     return res.res;
 }
@@ -396,7 +396,6 @@ void glue(glue(io_write_chk, SUFFIX), MMUSUFFIX)(CPUArchState *env, target_phys_
 }
 
 #elif !defined(SYMBEX_LLVM_LIB)
-
 void glue(glue(io_write, SUFFIX), MMUSUFFIX)(CPUArchState *env, target_phys_addr_t physaddr, DATA_TYPE val,
                                              target_ulong addr, void *retaddr) {
     const struct MemoryDescOps *ops = phys_get_ops(physaddr);
@@ -405,7 +404,7 @@ void glue(glue(io_write, SUFFIX), MMUSUFFIX)(CPUArchState *env, target_phys_addr
 
 #if defined(CONFIG_SYMBEX) && defined(CONFIG_SYMBEX_MP)
     // XXX: avoid switch to symbolic mode here, not needed for writes
-    if (unlikely(tcg_is_dyngen_addr(retaddr) && g_sqi.mem.is_mmio_symbolic(addr, DATA_SIZE))) {
+    if (unlikely(tcg_is_dyngen_addr(retaddr) && g_sqi.mem.is_mmio_symbolic(physaddr, DATA_SIZE))) {
         g_sqi.exec.switch_to_symbolic(retaddr);
     }
 

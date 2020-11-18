@@ -1,5 +1,6 @@
 /*
  * PeX S2E Plugin
+ * Hookup device memory region (pio/mmio) and do symbolic execution
  * 2020 Tong Zhang <ztong0001@gmail.com>
  */
 #include <s2e/ConfigFile.h>
@@ -17,6 +18,15 @@
 #include <llvm/ADT/DenseSet.h>
 #include "PeX.h"
 
+/* for KVM_SET_USER_MEMORY_REGION */
+struct kvm_userspace_memory_region {
+    __u32 slot;
+    __u32 flags;
+    __u64 guest_phys_addr;
+    __u64 memory_size;    /* bytes */
+    __u64 userspace_addr; /* start of the userspace allocated memory */
+};
+
 namespace s2e {
 namespace plugins {
 
@@ -24,8 +34,20 @@ S2E_DEFINE_PLUGIN(PeX, "PeX S2E plugin", "", );
 
 #include "pexcb.h"
 
+void PeX::initBarMMIO() {
+    for (int i = 0; i < 6; i++) {
+        int size = ~BAR_HMASK + 1;
+        // must be 4k aligned
+        auto *mchunk = (uint8_t *) memalign(4096, size);
+        barMMIO.push_back(mchunk);
+    }
+}
+
 void PeX::initialize() {
+    initBarMMIO();
     os_monitor = static_cast<OSMonitor *>(s2e()->getPlugin("OSMonitor"));
+    getDebugStream(g_s2e_state) << " dmesg addr = " << hexval(os_monitor->getDmesgAddress())
+                                << " len= " << hexval(os_monitor->getDmesgLen()) << "\n";
     // configs specified by user
     auto *config = s2e()->getConfig();
     // m_traceBlockTranslation = config->getBool(getConfigKey() + ".traceBlockTranslation");
@@ -52,22 +74,23 @@ void PeX::initialize() {
     // hook bb end to capture call/jump
      plugin->onTranslateBlockEnd.connect(
             sigc::mem_fun(*this, &PeX::slotTranslateBlockEnd));
+#endif
     /*
      * monitor all instruction execution
      */
-    plugin->onTranslateInstructionStart.connect(
-            sigc::mem_fun(*this, &PeX::onTranslateInstructionStart));
+    // plugin->onTranslateInstructionStart.connect(sigc::mem_fun(*this, &PeX::onTranslateInstructionStart));
     /*
      * monitor all memory access
      */
-    plugin->slotOnConcreteDataMemoryAccess.connect(sigc::mem_fun(*this, &PeX::slotOnConcreteDataMemoryAccess));
-#endif
+    // plugin->onConcreteDataMemoryAccess.connect(sigc::mem_fun(*this, &PeX::slotOnConcreteDataMemoryAccess));
+    // plugin->onBeforeSymbolicDataMemoryAccess.connect(sigc::mem_fun(*this, &PeX::onBeforeSymbolicDataMemoryAccess));
 }
 
 // called after g_s2e_state is available
 void PeX::pluginInit2(S2EExecutionState *state) {
+    auto *mem = state->mem();
     // set initial PCI config data
-    auto &pci_header = state->mem()->sfpPCIDeviceHeader;
+    auto &pci_header = mem->sfpPCIDeviceHeader;
     // bar registers
 #if 1
     pci_header.reg[PCI_CONFIG_DATA_REG_BAR0] = BAR_INIT_VALUE;
@@ -122,41 +145,66 @@ bool PeX::isPortSymbolic(S2EExecutionState *state, uint16_t port) {
             break;
     }
     // port falls into bar mapped to IO address space
-    if (fallsIntoBar(state, port)) {
-        getDebugStream(state) << " PeX ... port access to mapped bar, port " << hexval(port) << "\n";
+    // if (fallsIntoBar(state, port)!=-1) {
+    //    getDebugStream(state) << " PeX ... port access to mapped bar, port " << hexval(port) << "\n";
+    //    return true;
+    // }
+    return false;
+}
+
+bool PeX::isMmioSymbolic(S2EExecutionState *state, uint64_t physAddr) {
+    int bar = fallsIntoBar(state, physAddr);
+    if (bar != -1) {
+        getDebugStream(state) << " - BAR " << bar << " MMIO @ ADDR " << hexval(physAddr) << "\n";
         return true;
     }
     return false;
 }
 
-bool PeX::isMmioSymbolic(S2EExecutionState *state, uint64_t physAddr) {
-    if (fallsIntoBar(state, physAddr)) {
-        getDebugStream(state) << " - MMIO @ " << hexval(physAddr) << "\n";
-        return true;
-    }
-    return false;
+void PeX::onBeforeSymbolicDataMemoryAccess(S2EExecutionState *state, klee::ref<klee::Expr> addr,
+                                           klee::ref<klee::Expr> value, bool isWrite) {
+#if 0
+    uint64_t address = 0;
+    klee::ref<klee::ConstantExpr> conc = state->toConstant(addr, "addr");
+    address = conc->getZExtValue();
+
+    // this is virtual address -- need physical address
+    uint64_t paddr = state->mem()->getPhysicalAddress(address);
+    int bar = fallsIntoBar(state, paddr);
+    // if (bar == -1)
+    //    return;
+    getDebugStream(state) << "-PeX: SLOT Accessing Bar " << bar << " address=" << hexval(address)
+                          << " paddr=" << hexval(paddr) << " value=" << value
+                          << " pc=" << hexval(state->regs()->getPc()) << "\n";
+    // flag & MEM_TRACE_FLAG_WRITE
+#else
+    getDebugStream(state) << "-PeX::onBeforeSymbolicDataMemoryAccess "
+                          << " pc=" << hexval(state->regs()->getPc()) << " addr=" << addr << "\n";
+
+#endif
 }
 
 void PeX::slotOnConcreteDataMemoryAccess(S2EExecutionState *state, uint64_t address, uint64_t value, uint8_t size,
                                          unsigned flags) {
 #if 0
-//this is not working
-  int baridx = -1;
-  for (int i = 0; i < 6; i++) {
-      auto barl = bar[i];
-      auto barh = barl + ~BAR_HMASK;
-      if ((address >= barl) && (address <= barh)) {
-          baridx = i;
-          getDebugStream(state) << " Accessing Bar " << baridx << " address = " << hexval(address) << "\n";
-          break;
-      }
-  }
+    // this is virtual address -- need physical address
+    uint64_t paddr = state->mem()->getPhysicalAddress(address);
+    int bar = fallsIntoBar(state, paddr);
+    if (bar == -1)
+        return;
+    getDebugStream(state) << "+PeX: SLOT Accessing Bar " << bar << " address=" << hexval(address)
+                          << " paddr=" << hexval(paddr) << " value=" << hexval(value)
+                          << " pc=" << hexval(state->regs()->getPc()) << "\n";
+    // flag & MEM_TRACE_FLAG_WRITE
+#else
+    getDebugStream(state) << "+PeX::slotOnConcreteDataMemoryAccess pc=" << hexval(state->regs()->getPc())
+                          << " address=" << hexval(address) << "\n";
 #endif
 }
 
-bool PeX::isOurDevice() {
+bool PeX::isOurDevice(S2EExecutionState *state) {
     // FIXME: is g_s2e_state the current state?
-    uint32_t reg_pci_cfg_addr = getPortIORegister(PCI_CONFIG_ADDRESS_PORT);
+    uint32_t reg_pci_cfg_addr = getPortIORegister(state, PCI_CONFIG_ADDRESS_PORT);
     uint8_t bus = BUS_ADDR(reg_pci_cfg_addr);
     uint8_t device = DEV_ADDR(reg_pci_cfg_addr);
     if ((bus == SYMDEV_BUS) && (device == SYMDEV_DEV)) {
@@ -165,7 +213,7 @@ bool PeX::isOurDevice() {
     return false;
 }
 
-bool PeX::fallsIntoBar(S2EExecutionState *state, uint64_t physAddr) {
+int PeX::fallsIntoBar(S2EExecutionState *state, uint64_t physAddr) {
     auto &pci_header = getPCIHeader(state);
     uint32_t *bar = &(pci_header.reg[PCI_CONFIG_DATA_REG_BAR0]);
     // getDebugStream(g_s2e_state) << " MMIO @ " << hexval(physAddr) << "\n";
@@ -174,10 +222,11 @@ bool PeX::fallsIntoBar(S2EExecutionState *state, uint64_t physAddr) {
             continue;
         auto barlo = (uint64_t)(bar[i]) & 0xFFFFFFF0;
         auto barhi = (uint64_t)(barlo + ~BAR_HMASK) & 0xFFFFFFF0;
-        if ((physAddr >= barlo) && (physAddr <= barhi))
-            return true;
+        if ((physAddr >= barlo) && (physAddr <= barhi)) {
+            return i;
+        }
     }
-    return false;
+    return -1;
 }
 
 void PeX::dumpbar(S2EExecutionState *state) {
@@ -192,22 +241,59 @@ void PeX::dumpbar(S2EExecutionState *state) {
     }
 }
 
-void PeX::writeBAR(S2EExecutionState *state, uint32_t reg, uint32_t value) {
-    if (!isOurDevice())
+void PeX::configBAR(S2EExecutionState *state, uint32_t reg, uint32_t value) {
+    // dumpDmesg(state);
+    if (!isOurDevice(state))
         return;
+    auto baridx = reg - PCI_CONFIG_DATA_REG_BAR0;
+    getDebugStream(state) << " PeX .. config BAR[" << baridx << "] = " << hexval(value) << "\n";
     auto &pci_header = getPCIHeader(state);
     if (value == 0xffffffff) {
-        pci_header.reg[reg] = BAR_HMASK | 0x01;
+        // pio bar
+        // pci_header.reg[reg] = BAR_HMASK | 0x01;
+        // mmio bar
+        pci_header.reg[reg] = BAR_HMASK & (~1UL);
+        return;
     } else {
-        pci_header.reg[reg] = value | 0x01;
+        // pio bar
+        // pci_header.reg[reg] = value | 0x01;
+        // mmio bar
+        pci_header.reg[reg] = value & (~1UL);
         dumpbar(state);
+        if (value != 0) {
+            // uint64_t size = ~BAR_HMASK + 1;
+            // kvm_userspace_memory_region barRegion = {0, 0, value, size, (uintptr_t) barMMIO[0]};
+            // s2e_kvm_register_mmio_region(&barRegion);
+            // getDebugStream(state) << "PeX:: done\n";
+#if 0
+            int size = ~BAR_HMASK + 1;
+            getDebugStream(state) << " PeX .. config BAR[" << baridx << "] IO Memory\n";
+            // auto *mchunk = barMMIO[baridx];
+            auto *mchunk = (uint8_t *) memalign(4096, size);
+            for (int i = 0; i < size; i++)
+                mchunk[i] = 1;
+            uint64_t hostaddr = (uint64_t) mchunk;
+            g_s2e->getExecutor()->registerRam(state, nullptr, value, size, hostaddr, false, false, "PeXBar");
+            // - mark this region symbolic
+            // create symbolic array
+            std::string name = "PeXBar";
+            name += std::to_string(baridx);
+            std::vector<unsigned char> array;
+            auto symb = state->createSymbolicArray(name, size, nullptr);
+            auto* mem = state->mem();
+            // this is not working....
+            for (int i = 0; i < size; i++) {
+                if (!mem->write((uint64_t) &mchunk[i], symb[i], HostAddress)) {
+                    getWarningsStream(state)
+                        << "PeX:Can not insert symbolic value at " << hexval(value + i) << ": cannot write to memory\n";
+                }
+            }
+#endif
+        }
     }
-    auto baridx = reg - PCI_CONFIG_DATA_REG_BAR0;
-    getDebugStream(state) << " PeX ... write BAR[" << baridx << "] = " << hexval(value) << "\n";
 }
 
 void PeX::slotOnPortAccess(S2EExecutionState *state, KleeExprRef port, KleeExprRef value, bool isWrite) {
-#if 1
     auto &pci_header = getPCIHeader(state);
     uint64_t cport = 0, cvalue = 0;
     if (auto *_cport = dyn_cast<klee::ConstantExpr>(port.get())) {
@@ -220,6 +306,11 @@ void PeX::slotOnPortAccess(S2EExecutionState *state, KleeExprRef port, KleeExprR
             getDebugStream(state) << "write sym value to port\n";
         }
     }
+    if (m_printAllPortAccess) {
+        std::string rw = isWrite ? "write" : "read";
+        getDebugStream(state) << rw << "  port " << port << " value=" << value << "\n";
+    }
+
     if (isWrite) {
         switch (cport) {
             case PCI_CONFIG_ADDRESS_PORT: {
@@ -229,16 +320,16 @@ void PeX::slotOnPortAccess(S2EExecutionState *state, KleeExprRef port, KleeExprR
                 uint8_t device = DEV_ADDR(reg_pci_cfg_addr);
                 uint8_t function = FUN_ADDR(reg_pci_cfg_addr);
                 uint8_t reg = REG_ADDR(reg_pci_cfg_addr);
-                getDebugStream(state) << " PeX ... set PCI_CONFIG_ADDRESS : " << value << " Bus " << hexval(bus)
+                getDebugStream(state) << " PeX ... pio set PCI_CONFIG_ADDRESS : " << value << " Bus " << hexval(bus)
                                       << ", Dev " << hexval(device) << ", Func " << hexval(function) << ", Reg "
                                       << hexval(reg) << "\n";
                 break;
             }
             case PCI_CONFIG_DATA_PORT ... PCI_CONFIG_DATA_PORT_END: {
-                uint32_t reg_pci_cfg_addr = getPortIORegister(PCI_CONFIG_ADDRESS_PORT);
+                uint32_t reg_pci_cfg_addr = getPortIORegister(state, PCI_CONFIG_ADDRESS_PORT);
                 auto regaddr = REG_ADDR(reg_pci_cfg_addr);
                 if ((regaddr >= PCI_CONFIG_DATA_REG_BAR0) && (regaddr <= PCI_CONFIG_DATA_REG_BAR5)) {
-                    writeBAR(state, regaddr, cvalue);
+                    configBAR(state, regaddr, cvalue);
                 } else {
                     // other registers ----
                     pci_header.reg[regaddr] = cvalue;
@@ -251,23 +342,24 @@ void PeX::slotOnPortAccess(S2EExecutionState *state, KleeExprRef port, KleeExprR
     } else {
         // port read
         if ((cport >= PCI_CONFIG_DATA_PORT) && (cport <= PCI_CONFIG_DATA_PORT_END)) {
-            uint32_t reg_pci_cfg_addr = getPortIORegister(PCI_CONFIG_ADDRESS_PORT);
+            uint32_t reg_pci_cfg_addr = getPortIORegister(state, PCI_CONFIG_ADDRESS_PORT);
             uint8_t bus = BUS_ADDR(reg_pci_cfg_addr);
             uint8_t device = DEV_ADDR(reg_pci_cfg_addr);
             uint8_t function = FUN_ADDR(reg_pci_cfg_addr);
             uint8_t reg = REG_ADDR(reg_pci_cfg_addr);
-            getDebugStream(state) << " PeX ... get PCI_CONFIG_DATA_PORT from : " << hexval(reg_pci_cfg_addr)
+            getDebugStream(state) << " PeX ... pio get PCI_CONFIG_DATA_PORT from : " << hexval(reg_pci_cfg_addr)
                                   << " BDFR = " << hexval(bus) << "," << hexval(device) << "," << hexval(function)
                                   << "," << hexval(reg) << "   value = " << hexval(cvalue) << "\n";
             switch (reg) {
                 case 0: {
-                    getDebugStream(state) << " PeX ... "
+                    getDebugStream(state) << " PeX ... pio probing device "
                                           << "@BDFR:" << hexval(bus) << "," << hexval(device) << "," << hexval(function)
                                           << "," << hexval(reg) << " feeding VID:PID = " << hexval(cvalue) << "\n";
                     break;
                 }
                 case PCI_CONFIG_DATA_REG_BAR0 ... PCI_CONFIG_DATA_REG_BAR5: {
-                    getDebugStream(state) << " PeX ... reading BAR " << (reg - 4) << " @ : " << hexval(cvalue) << "\n";
+                    getDebugStream(state) << " PeX ... pio read BAR " << (reg - PCI_CONFIG_DATA_REG_BAR0) << " = "
+                                          << hexval(cvalue) << "\n";
                     break;
                 }
                 default:
@@ -275,13 +367,8 @@ void PeX::slotOnPortAccess(S2EExecutionState *state, KleeExprRef port, KleeExprR
             }
         }
     }
-    if (m_printAllPortAccess) {
-        std::string rw = isWrite ? "write" : "read";
-        getDebugStream(state) << rw << "  port " << port << " value=" << value << "\n";
-    }
-#endif
 }
-#if 1
+
 template <typename T> static void SymbHwGetConcolicVector(T in, unsigned size, ConcreteArray &out) {
     union {
         // XXX: assumes little endianness!
@@ -294,25 +381,25 @@ template <typename T> static void SymbHwGetConcolicVector(T in, unsigned size, C
         out[i] = array[i];
     }
 }
-#endif
+
 KleeExprRef PeX::createExpressionPort(S2EExecutionState *state, uint64_t address, unsigned size,
                                       uint64_t concreteValue) {
     auto &pci_header = getPCIHeader(state);
     auto cfc_offset = address - 0xcfc;
 
-    uint32_t reg_pci_cfg_addr = getPortIORegister(PCI_CONFIG_ADDRESS_PORT);
+    uint32_t reg_pci_cfg_addr = getPortIORegister(state, PCI_CONFIG_ADDRESS_PORT);
     // auto function = FUN_ADDR(reg_pci_cfg_addr);
     std::stringstream ss;
-    ss << "PCI device @ " << hexval(reg_pci_cfg_addr) << " portread ";
+    ss << "PCI device @ " << hexval(reg_pci_cfg_addr) << " pio read ";
     uint8_t reg = REG_ADDR(reg_pci_cfg_addr);
-    ss << hexval(address) << " size " << size << " @" << hexval(state->regs()->getPc());
+    ss << hexval(address) << " size " << size << " pc=" << hexval(state->regs()->getPc());
 
-    if (!isOurDevice())
+    if (!isOurDevice(state))
         goto end;
     if ((address < PCI_CONFIG_DATA_PORT) || (address > PCI_CONFIG_DATA_PORT_END))
         goto end;
-    if (fallsIntoBar(state, address))
-        goto symend;
+    // if (fallsIntoBar(state, address)!=-1)
+    //    goto symend;
 
     switch (reg) {
         case PCI_CONFIG_DATA_REG_0:
@@ -388,14 +475,32 @@ end : { return klee::ExtractExpr::create(klee::ConstantExpr::create(concreteValu
 KleeExprRef PeX::createExpressionMMIO(S2EExecutionState *state, uint64_t address, unsigned size,
                                       uint64_t concreteValue) {
     std::stringstream ss;
-    ss << "BAR MMIO @ ";
+    ss << "PeX::createExpressionMMIO BAR MMIO @ ";
     ss << hexval(address) << " size " << size << " pc=" << hexval(state->regs()->getPc());
+    getDebugStream(state) << ss.str() << "\n";
     return state->createSymbolicValue(ss.str(), size * 8);
+    // return klee::ExtractExpr::create(klee::ConstantExpr::create(100, 64), 0, size * 8);
 }
 
 // dmesg from m_logBuf and m_logBufLen
-// std::string str;
-// state->mem()->readString(m_logBuf, str, m_log_bufLen);
+void PeX::dumpDmesg(S2EExecutionState *state) {
+    std::string dmesg;
+    uint64_t dmesg_addr = os_monitor->getDmesgAddress();
+    uint64_t dmesg_len = os_monitor->getDmesgLen();
+    getDebugStream(state) << " dmesg is at " << hexval(dmesg_addr) << " length = " << hexval(dmesg_len) << "\n";
+    static uint8_t *buffer;
+    if (!buffer)
+        buffer = (uint8_t *) malloc(dmesg_len);
+    auto *mem = state->mem();
+    // cannot use readString here since kernel log buffer is not
+    //  plain text buffer
+    // state->mem()->readString(dmesg_addr, str, dmesg_len);
+    memset(buffer, 0, sizeof(uint8_t) * dmesg_len);
+    mem->read(dmesg_addr, buffer, dmesg_len);
+    // TODO: decode buffer into plain text
+
+    getDebugStream(state) << dmesg << "\n";
+}
 
 /////////////////////////////////////////////////////////////////////////
 // dust
@@ -637,6 +742,7 @@ void PeX::onExecuteDirectCall(S2EExecutionState *state, uint64_t pc) {
     auto calleepc = state->regs()->getPc();
     getDebugStream(state) << " execute direct call @ " << hexval(pc) << " callee pc:" << hexval(calleepc) << "\n";
 }
+#endif
 
 void PeX::onTranslateInstructionStart(ExecutionSignal *signal, S2EExecutionState *state, TranslationBlock *tb,
                                       uint64_t pc) {
@@ -646,8 +752,8 @@ void PeX::onTranslateInstructionStart(ExecutionSignal *signal, S2EExecutionState
 }
 
 void PeX::onInstruction(S2EExecutionState *state, uint64_t pc) {
+    getDebugStream(state) << "PeX:: pc @ " << hexval(pc) << "\n";
 }
-#endif
 
 } // namespace plugins
 } // namespace s2e
