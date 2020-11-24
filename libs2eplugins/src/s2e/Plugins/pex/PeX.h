@@ -78,7 +78,8 @@ private:
 
     // PCI specific
     void configBAR(S2EExecutionState *, uint32_t reg, uint32_t value);
-    int fallsIntoBar(S2EExecutionState *, uint64_t phy_addr);
+    int fallsIntoMMIOBar(S2EExecutionState *, uint64_t phy_addr);
+    int fallsIntoPIOBar(S2EExecutionState *, uint64_t phy_addr);
     void dumpbar(S2EExecutionState *);
     uint32_t getPortIORegister(S2EExecutionState *state, uint32_t addr) {
         uint32_t ret;
@@ -116,6 +117,7 @@ private:
     }
 
     void dumpDmesg(S2EExecutionState *state);
+    void processBarConfiguration();
 
 #if 0
     void processPCRange();

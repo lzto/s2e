@@ -43,11 +43,13 @@
 // IO address space
 // #define BAR_HMASK 0xffffff00
 // MMIO memory address space
-#define BAR_HMASK 0xfff80000
+// #define BAR_HMASK 0xfff80000
 
 // 0 means mmio bar
 // 1 means pio bar
-#define BAR_INIT_VALUE 0x0
+#define BAR_TYPE_MMIO 0
+#define BAR_TYPE_PIO 1
+// #define BAR_INIT_VALUE 0x0
 
 #define PCI_ENABLE_BIT 0x80000000
 #endif
