@@ -121,12 +121,13 @@ void PeX::pluginInit2(S2EExecutionState *state) {
     pci_header.reg[PCI_CONFIG_DATA_REG_B] = 0xffffffff;
     // expansion rom
     pci_header.reg[PCI_CONFIG_DATA_REG_C] = 0xffffffff;
-    // Reserved	Capabilities Pointer
+    // Reserved	Capabilities Pointers
     pci_header.reg[PCI_CONFIG_DATA_REG_D] = 0xffffffff;
-    // Reserved
+    // Reserved -- always concrete
     pci_header.reg[PCI_CONFIG_DATA_REG_E] = 0xffffffff;
-    // interrupt
-    pci_header.reg[PCI_CONFIG_DATA_REG_F] = 1;
+    // PCI devices are always connected to INT PIN 1 in QEMU
+    // this register will always be concrete
+    pci_header.reg[PCI_CONFIG_DATA_REG_F] = 0x000001ff;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -435,7 +436,8 @@ KleeExprRef PeX::createExpressionPort(S2EExecutionState *state, uint64_t address
         case PCI_CONFIG_DATA_REG_A:
         case PCI_CONFIG_DATA_REG_B:
         case PCI_CONFIG_DATA_REG_C:
-        case PCI_CONFIG_DATA_REG_E: {
+        case PCI_CONFIG_DATA_REG_E:
+        case PCI_CONFIG_DATA_REG_F: {
             ss << " sym=no\n";
             getDebugStream(g_s2e_state) << ss.str();
             goto concend;
@@ -464,8 +466,9 @@ KleeExprRef PeX::createExpressionPort(S2EExecutionState *state, uint64_t address
 #endif
         }
         case PCI_CONFIG_DATA_REG_1:
+        // FIXME: capabilities pointer is located at bit7~0, some devices implement MSI(-X) so need to consider
+        // this as well
         case PCI_CONFIG_DATA_REG_D:
-        case PCI_CONFIG_DATA_REG_F:
         default: {
             ss << " sym=yes\n";
             goto symend;
@@ -544,7 +547,6 @@ void PeX::processBarConfiguration() {
     bar_configuration[4][1] = config->getInt(getConfigKey() + ".bar4range");
     bar_configuration[5][0] = config->getInt(getConfigKey() + ".bar5type");
     bar_configuration[5][1] = config->getInt(getConfigKey() + ".bar5range");
-
 }
 
 /////////////////////////////////////////////////////////////////////////
