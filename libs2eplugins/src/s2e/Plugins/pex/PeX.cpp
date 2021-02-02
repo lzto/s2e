@@ -917,6 +917,8 @@ void PeX::slotTranslateBlockStart(ExecutionSignal *signal, S2EExecutionState *st
 void PeX::slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc) {
     if (!os_monitor->isKernelAddress(pc))
         return;
+    if (!m_with_afl)
+        return;
     // do not feed afl before probed
     if (!state->metadata["device_probed"])
         return;
@@ -935,6 +937,8 @@ void PeX::slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc) {
 
 void PeX::slotOnStateKill(S2EExecutionState *state) {
     if (!state->metadata["device_probed"])
+        return;
+    if (!m_with_afl)
         return;
     openAFLProxySHMBlock();
     // send terminate to AFL
