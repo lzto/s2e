@@ -9,15 +9,15 @@
 #include <s2e/Plugin.h>
 #include <s2e/Plugins/OSMonitors/ModuleDescriptor.h>
 #include <s2e/S2EExecutionState.h>
+#include <semaphore.h>
 #include <utility>
 #include <vector>
-#include <semaphore.h>
 
 #include "commondef.h"
 #include "pcidef.h"
 #include "shm.h"
 
-struct XXX{
+struct XXX {
     sem_t semr;
     sem_t semw;
     char path[128]; // the input data path
@@ -37,7 +37,7 @@ class PeX final : public Plugin, public IPluginInvoker {
     S2E_PLUGIN
 public:
     PeX(S2E *s2e) : Plugin(s2e) {
-      aflProxyShm = new SHM<struct XXX>("/afl-proxy");
+        aflProxyShm = new SHM<struct XXX>("/afl-proxy");
     }
     ~PeX() {
         delete aflProxyShm;
@@ -101,7 +101,7 @@ private:
     // shared memory
     SHM<struct XXX> *aflProxyShm;
     void openAFLProxySHMBlock();
-    uint64_t getByteFromFile(const char*path, uint64_t offset);
+    uint64_t getByteFromFile(const char *path, uint64_t offset);
 
     std::vector<uint8_t *> barMMIO;
     void initBarMMIO();

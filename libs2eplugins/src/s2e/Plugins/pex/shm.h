@@ -37,7 +37,7 @@ public:
         if (smem)
             munmap(smem, sizeof(T));
         smem = nullptr;
-        if ((fd > 0) && (mode==SHMOpenType::CREATE)) {
+        if ((fd > 0) && (mode == SHMOpenType::CREATE)) {
             shm_unlink(shmPath.c_str());
         }
         fd = 0;

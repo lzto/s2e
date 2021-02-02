@@ -86,10 +86,10 @@ void PeX::initialize() {
     g_symbolicMemoryHook = SymbolicMemoryHook(_isMmioSymbolic, symbolicMMIORead, symbolicMMIOWrite, this);
 
     if (m_with_afl) {
-      openAFLProxySHMBlock();
-      plugin->onStateKill.connect(sigc::mem_fun(*this, &PeX::slotOnStateKill));
-      // hook bb start
-      plugin->onTranslateBlockStart.connect(sigc::mem_fun(*this, &PeX::slotTranslateBlockStart));
+        openAFLProxySHMBlock();
+        plugin->onStateKill.connect(sigc::mem_fun(*this, &PeX::slotOnStateKill));
+        // hook bb start
+        plugin->onTranslateBlockStart.connect(sigc::mem_fun(*this, &PeX::slotTranslateBlockStart));
     }
 #if 0
     // hook bb end to capture call/jump
@@ -97,8 +97,8 @@ void PeX::initialize() {
             sigc::mem_fun(*this, &PeX::slotTranslateBlockEnd));
 #endif
     // monitor all instruction execution
-    if (irq!=-1)
-      plugin->onTranslateInstructionStart.connect(sigc::mem_fun(*this, &PeX::onTranslateInstructionStart));
+    if (irq != -1)
+        plugin->onTranslateInstructionStart.connect(sigc::mem_fun(*this, &PeX::onTranslateInstructionStart));
     // monitor all memory access
     // plugin->onConcreteDataMemoryAccess.connect(sigc::mem_fun(*this, &PeX::slotOnConcreteDataMemoryAccess));
     // plugin->onBeforeSymbolicDataMemoryAccess.connect(sigc::mem_fun(*this, &PeX::onBeforeSymbolicDataMemoryAccess));
@@ -523,23 +523,22 @@ KleeExprRef PeX::createExpressionMMIO(S2EExecutionState *state, uint64_t address
     ss << hexval(address) << " size " << size << " pc=" << hexval(state->regs()->getPc());
     getDebugStream(state) << ss.str() << "\n";
     if (state->metadata["device_probed"]) {
-      uint64_t ret;
-      if (m_with_afl) {
-        // ask data from AFL
-        // should already open
-        openAFLProxySHMBlock();
-        auto* sm = aflProxyShm->getMem();
-        ret = getByteFromFile(sm->path, address);
-      } else
-      {
-        // feed random data
-        // srand(time(NULL));
-        ret = random();
-      }
-      getDebugStream(state) << "feed concrete value " << hexval(ret)<<"\n";
-      return klee::ExtractExpr::create(klee::ConstantExpr::create(ret, 64), 0, size * 8);
+        uint64_t ret;
+        if (m_with_afl) {
+            // ask data from AFL
+            // should already open
+            openAFLProxySHMBlock();
+            auto *sm = aflProxyShm->getMem();
+            ret = getByteFromFile(sm->path, address);
+        } else {
+            // feed random data
+            // srand(time(NULL));
+            ret = random();
+        }
+        getDebugStream(state) << "feed concrete value " << hexval(ret) << "\n";
+        return klee::ExtractExpr::create(klee::ConstantExpr::create(ret, 64), 0, size * 8);
     }
-    // not probed yet -- 
+    // not probed yet --
     return state->createSymbolicValue(ss.str(), size * 8);
 }
 
@@ -830,7 +829,7 @@ void PeX::onTranslateInstructionStart(ExecutionSignal *signal, S2EExecutionState
 void PeX::onInstruction(S2EExecutionState *state, uint64_t pc) {
     // do not inject if not probed
     if (!state->metadata["device_probed"])
-      return;
+        return;
     // getDebugStream(state) << "PeX:: pc @ " << hexval(pc) << "\n";
     // IRQ generation strategy: generate IRQ every x instructions, this may be very slow---
     static uint64_t icount = 0;
@@ -848,7 +847,7 @@ void PeX::handleOpcodeInvocation(S2EExecutionState *state, uint64_t guestDataPtr
             getDebugStream(state) << "PeX:: device probed for state " << state->getID() << "\n";
             state->metadata["device_probed"] = 1;
             // FIXME: still buggy here, several things need to be done here
-            // 1. kill all others, but our parent state --- 
+            // 1. kill all others, but our parent state ---
             killAllOthers(state);
             // 2. save current state
             // 3. switch to concrete
@@ -920,7 +919,7 @@ void PeX::slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc) {
         return;
     // do not feed afl before probed
     if (!state->metadata["device_probed"])
-      return;
+        return;
     openAFLProxySHMBlock();
     // send pc to AFL
     auto *sm = aflProxyShm->getMem();
@@ -932,12 +931,11 @@ void PeX::slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc) {
     if (sem_post(&sm->semw) == -1) {
         // errror post semr
     }
-
 }
 
 void PeX::slotOnStateKill(S2EExecutionState *state) {
     if (!state->metadata["device_probed"])
-      return;
+        return;
     openAFLProxySHMBlock();
     // send terminate to AFL
     auto *sm = aflProxyShm->getMem();
@@ -950,15 +948,15 @@ void PeX::slotOnStateKill(S2EExecutionState *state) {
     }
     aflProxyShm->close();
 }
-uint64_t PeX::getByteFromFile(const char* path, uint64_t offset) {
-  uint64_t ret;
-  std::ifstream in(path, std::ifstream::ate | std::ifstream::binary);
-  uint64_t fsize = in.tellg();
-  in.open(path);
-  in.seekg(offset % fsize);
-  in.read((char*)&ret, sizeof(uint64_t));
-  in.close();
-  return ret;
+uint64_t PeX::getByteFromFile(const char *path, uint64_t offset) {
+    uint64_t ret;
+    std::ifstream in(path, std::ifstream::ate | std::ifstream::binary);
+    uint64_t fsize = in.tellg();
+    in.open(path);
+    in.seekg(offset % fsize);
+    in.read((char *) &ret, sizeof(uint64_t));
+    in.close();
+    return ret;
 }
 
 } // namespace plugins
