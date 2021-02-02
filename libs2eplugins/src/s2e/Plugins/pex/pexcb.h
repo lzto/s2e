@@ -36,7 +36,9 @@ static klee::ref<klee::Expr> symbolicMMIORead(S2EExecutionState *state, struct M
     return pex->createExpressionMMIO(state, physaddress, size, concreteValue);
 }
 
-static void symbolicMMIOWrite(S2EExecutionState *state, struct MemoryDesc *mr, uint64_t physaddress,
+static bool symbolicMMIOWrite(S2EExecutionState *state, struct MemoryDesc *mr, uint64_t physaddress,
                               const klee::ref<klee::Expr> &value, SymbolicHardwareAccessType type, void *opaque) {
     // TODO: return bool to not call original handler, like for I/O
+    PeX *pex = static_cast<PeX *>(opaque);
+    return !pex->isMmioSymbolic(state, physaddress);
 }

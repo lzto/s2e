@@ -11,9 +11,19 @@
 #include <s2e/S2EExecutionState.h>
 #include <utility>
 #include <vector>
+#include <semaphore.h>
 
 #include "commondef.h"
 #include "pcidef.h"
+#include "shm.h"
+
+struct XXX{
+    sem_t semr;
+    sem_t semw;
+    char path[128]; // the input data path
+    uint8_t type;
+    uint8_t data[128];
+} XXX;
 
 // we want a fixed address in the PCI system
 #define SYMDEV_BUS 0x00
@@ -23,17 +33,18 @@ namespace s2e {
 namespace plugins {
 class OSMonitor;
 
-class PeX : public Plugin {
+class PeX final : public Plugin, public IPluginInvoker {
     S2E_PLUGIN
 public:
     PeX(S2E *s2e) : Plugin(s2e) {
+      aflProxyShm = new SHM<struct XXX>("/afl-proxy");
     }
     ~PeX() {
+        delete aflProxyShm;
         // release the bar memory
         for (auto ptr : barMMIO)
             free(ptr);
     }
-
     void initialize();
     void pluginInit2(S2EExecutionState *);
 
@@ -50,28 +61,47 @@ public:
     // memory address space
     KleeExprRef createExpressionMMIO(S2EExecutionState *, uint64_t address, unsigned size, uint64_t concreteValue);
 
-#if 0
     void slotTranslateBlockStart(ExecutionSignal *, S2EExecutionState *state, TranslationBlock *tb, uint64_t pc);
+#if 0
     void slotTranslateBlockEnd(ExecutionSignal *signal, S2EExecutionState *state, TranslationBlock *tb, uint64_t pc,
                                bool staticTarget, uint64_t targetPc);
-    void slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc);
     void onExecuteDirectCall(S2EExecutionState *state, uint64_t pc);
     void onExecuteIndirectCall(S2EExecutionState *state, uint64_t pc);
 #endif
+    void slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc);
     void onTranslateInstructionStart(ExecutionSignal *signal, S2EExecutionState *state, TranslationBlock *tb,
                                      uint64_t pc);
     void onInstruction(S2EExecutionState *state, uint64_t pc);
+
+    void slotOnStateKill(S2EExecutionState *state);
+
+    ///
+    /// the guest tool will call this to let us know device has been probed successfully
+    ///
+    void handleOpcodeInvocation(S2EExecutionState *state, uint64_t guestDataPtr, uint64_t guestDataSize);
 
 private:
     OSMonitor *os_monitor;
     int m_delay_enable_symbhw;
     bool m_printAllPortAccess;
+    bool m_with_afl;
     // bool m_traceBlockTranslation;
     // bool m_traceBlockExecution;
     // bool m_killWhenNotInRange;
 
     uint32_t reg_vid;
     uint32_t reg_pid;
+
+    // inject irq per xxx instructions
+    uint32_t m_inject_irq_per_xxx_ins = 1000000;
+
+    // the irq our virtual device will using
+    int irq;
+
+    // shared memory
+    SHM<struct XXX> *aflProxyShm;
+    void openAFLProxySHMBlock();
+    uint64_t getByteFromFile(const char*path, uint64_t offset);
 
     std::vector<uint8_t *> barMMIO;
     void initBarMMIO();
@@ -132,6 +162,8 @@ private:
     void jumpToPc(S2EExecutionState *state, uint64_t pc);
     std::vector<uint64_t> unwindStack(S2EExecutionState *state);
 #endif
+    void assertIRQ(S2EExecutionState *);
+    void killAllOthers(S2EExecutionState *);
 };
 
 } // namespace plugins

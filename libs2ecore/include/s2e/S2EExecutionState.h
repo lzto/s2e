@@ -409,6 +409,8 @@ public:
 
     void enumPossibleRanges(klee::ref<klee::Expr> e, klee::ref<klee::Expr> start, klee::ref<klee::Expr> end,
                             std::vector<klee::Range> &ranges);
+    // some metadata
+    std::unordered_map<std::string, int> metadata;
 };
 } // namespace s2e
 

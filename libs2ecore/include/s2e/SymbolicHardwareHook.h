@@ -99,7 +99,7 @@ public:
                                                    uint64_t physaddress, const klee::ref<klee::Expr> &value,
                                                    SymbolicHardwareAccessType type, void *opaque);
 
-    typedef void (*SYMB_MEM_WRITE)(S2EExecutionState *state, struct MemoryDesc *mr, uint64_t physaddress,
+    typedef bool (*SYMB_MEM_WRITE)(S2EExecutionState *state, struct MemoryDesc *mr, uint64_t physaddress,
                                    const klee::ref<klee::Expr> &value, SymbolicHardwareAccessType type, void *opaque);
 
 private:
@@ -141,10 +141,10 @@ public:
         return m_readCb(state, mr, physAddress, concolicValue, type, m_opaque);
     }
 
-    inline void write(S2EExecutionState *state, struct MemoryDesc *mr, uint64_t physAddress,
+    inline bool write(S2EExecutionState *state, struct MemoryDesc *mr, uint64_t physAddress,
                       const klee::ref<klee::Expr> &val, SymbolicHardwareAccessType type) const {
         assert(m_writeCb);
-        m_writeCb(state, mr, physAddress, val, type, m_opaque);
+        return m_writeCb(state, mr, physAddress, val, type, m_opaque);
     }
 
     inline bool readable() const {

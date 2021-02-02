@@ -1159,6 +1159,7 @@ uintptr_t S2EExecutor::executeTranslationBlockKlee(S2EExecutionState *state, Tra
     if (!tb->llvm_function) {
         abort();
     }
+    // assert (!tb->se_tb);
 
     state->m_lastS2ETb = S2ETranslationBlockPtr(static_cast<S2ETranslationBlock *>(tb->se_tb));
 
@@ -1172,6 +1173,8 @@ uintptr_t S2EExecutor::executeTranslationBlockKlee(S2EExecutionState *state, Tra
         throw CpuExitException();
     }
 
+    if (!tb->se_tb)
+        m_s2e->getDebugStream(state) << " tb->se_tb is null!\n";
     state->m_lastS2ETb = nullptr;
 
     // XXX: TBs may be reused, persisted, etc.

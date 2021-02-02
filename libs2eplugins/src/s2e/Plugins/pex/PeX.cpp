@@ -58,6 +58,10 @@ void PeX::initialize() {
                                 << " len= " << hexval(os_monitor->getDmesgLen()) << "\n";
     // configs specified by user
     auto *config = s2e()->getConfig();
+
+    m_with_afl = config->getBool(getConfigKey() + ".withAFL");
+    m_inject_irq_per_xxx_ins = config->getInt(getConfigKey() + ".irq_inject_per_x_ins");
+
     // m_traceBlockTranslation = config->getBool(getConfigKey() + ".traceBlockTranslation");
     // m_traceBlockExecution = config->getBool(getConfigKey() + ".traceBlockExecution");
     // m_killWhenNotInRange = config->getBool(getConfigKey() + ".killWhenNotInRange");
@@ -65,6 +69,11 @@ void PeX::initialize() {
     m_printAllPortAccess = config->getBool(getConfigKey() + ".printAllPortAccess");
     reg_vid = config->getInt(getConfigKey() + ".VID");
     reg_pid = config->getInt(getConfigKey() + ".PID");
+
+    // this is actually the vector(int) not IRQ -- since PIC will map IRQ to vector
+    // and figure out ISR using IDT + vector
+    irq = config->getInt(getConfigKey() + ".interrupt");
+
 #if 0
     // processPCRange();
     // processTargetStackInfo();
@@ -76,20 +85,21 @@ void PeX::initialize() {
     g_symbolicPortHook = SymbolicPortHook(_isPortSymbolic, symbolicPortRead, symolicPortWrite, this);
     g_symbolicMemoryHook = SymbolicMemoryHook(_isMmioSymbolic, symbolicMMIORead, symbolicMMIOWrite, this);
 
+    if (m_with_afl) {
+      openAFLProxySHMBlock();
+      plugin->onStateKill.connect(sigc::mem_fun(*this, &PeX::slotOnStateKill));
+      // hook bb start
+      plugin->onTranslateBlockStart.connect(sigc::mem_fun(*this, &PeX::slotTranslateBlockStart));
+    }
 #if 0
-    // hook bb start
-    plugin->onTranslateBlockStart.connect(sigc::mem_fun(*this, &PeX::slotTranslateBlockStart));
     // hook bb end to capture call/jump
      plugin->onTranslateBlockEnd.connect(
             sigc::mem_fun(*this, &PeX::slotTranslateBlockEnd));
 #endif
-    /*
-     * monitor all instruction execution
-     */
-    // plugin->onTranslateInstructionStart.connect(sigc::mem_fun(*this, &PeX::onTranslateInstructionStart));
-    /*
-     * monitor all memory access
-     */
+    // monitor all instruction execution
+    if (irq!=-1)
+      plugin->onTranslateInstructionStart.connect(sigc::mem_fun(*this, &PeX::onTranslateInstructionStart));
+    // monitor all memory access
     // plugin->onConcreteDataMemoryAccess.connect(sigc::mem_fun(*this, &PeX::slotOnConcreteDataMemoryAccess));
     // plugin->onBeforeSymbolicDataMemoryAccess.connect(sigc::mem_fun(*this, &PeX::onBeforeSymbolicDataMemoryAccess));
 }
@@ -125,9 +135,10 @@ void PeX::pluginInit2(S2EExecutionState *state) {
     pci_header.reg[PCI_CONFIG_DATA_REG_D] = 0xffffffff;
     // Reserved -- always concrete
     pci_header.reg[PCI_CONFIG_DATA_REG_E] = 0xffffffff;
-    // PCI devices are always connected to INT PIN 1 in QEMU
+    // PCI devices are always connected to INT PIN 2 in QEMU
     // this register will always be concrete
-    pci_header.reg[PCI_CONFIG_DATA_REG_F] = 0x000001ff;
+    // get IRQ number from /proc/interrupt in guestos
+    pci_header.reg[PCI_CONFIG_DATA_REG_F] = 0x000002ff;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -432,7 +443,8 @@ KleeExprRef PeX::createExpressionPort(S2EExecutionState *state, uint64_t address
 
     switch (reg) {
         case PCI_CONFIG_DATA_REG_0:
-        case PCI_CONFIG_DATA_REG_2 ... PCI_CONFIG_DATA_REG_3:
+        case PCI_CONFIG_DATA_REG_2: // class
+        case PCI_CONFIG_DATA_REG_3:
         case PCI_CONFIG_DATA_REG_A:
         case PCI_CONFIG_DATA_REG_B:
         case PCI_CONFIG_DATA_REG_C:
@@ -467,6 +479,7 @@ KleeExprRef PeX::createExpressionPort(S2EExecutionState *state, uint64_t address
         }
         case PCI_CONFIG_DATA_REG_1:
         // FIXME: capabilities pointer is located at bit7~0, some devices implement MSI(-X) so need to consider
+        // case PCI_CONFIG_DATA_REG_2: // class
         // this as well
         case PCI_CONFIG_DATA_REG_D:
         default: {
@@ -509,8 +522,25 @@ KleeExprRef PeX::createExpressionMMIO(S2EExecutionState *state, uint64_t address
     ss << "PeX::createExpressionMMIO BAR MMIO @ ";
     ss << hexval(address) << " size " << size << " pc=" << hexval(state->regs()->getPc());
     getDebugStream(state) << ss.str() << "\n";
+    if (state->metadata["device_probed"]) {
+      uint64_t ret;
+      if (m_with_afl) {
+        // ask data from AFL
+        // should already open
+        openAFLProxySHMBlock();
+        auto* sm = aflProxyShm->getMem();
+        ret = getByteFromFile(sm->path, address);
+      } else
+      {
+        // feed random data
+        // srand(time(NULL));
+        ret = random();
+      }
+      getDebugStream(state) << "feed concrete value " << hexval(ret)<<"\n";
+      return klee::ExtractExpr::create(klee::ConstantExpr::create(ret, 64), 0, size * 8);
+    }
+    // not probed yet -- 
     return state->createSymbolicValue(ss.str(), size * 8);
-    // return klee::ExtractExpr::create(klee::ConstantExpr::create(100, 64), 0, size * 8);
 }
 
 // dmesg from m_logBuf and m_logBufLen
@@ -627,7 +657,6 @@ void PeX::slotTranslateBlockStart(ExecutionSignal *signal, S2EExecutionState *st
         signal->connect(sigc::mem_fun(*this, &PeX::slotExecuteBlockStart));
     }
 }
-
 bool PeX::isInRange(uint64_t pc) {
     for (const auto &p : pcrange) {
         // high
@@ -799,7 +828,137 @@ void PeX::onTranslateInstructionStart(ExecutionSignal *signal, S2EExecutionState
 }
 
 void PeX::onInstruction(S2EExecutionState *state, uint64_t pc) {
-    getDebugStream(state) << "PeX:: pc @ " << hexval(pc) << "\n";
+    // do not inject if not probed
+    if (!state->metadata["device_probed"])
+      return;
+    // getDebugStream(state) << "PeX:: pc @ " << hexval(pc) << "\n";
+    // IRQ generation strategy: generate IRQ every x instructions, this may be very slow---
+    static uint64_t icount = 0;
+    icount++;
+    if (icount % m_inject_irq_per_xxx_ins == 0)
+        assertIRQ(state);
+}
+
+void PeX::handleOpcodeInvocation(S2EExecutionState *state, uint64_t guestDataPtr, uint64_t guestDataSize) {
+    // we are not really using guestDataPtr as a pointer -- instead we store data in the pointer itself
+    // if the guest failed to probe the device we kill the state
+    getDebugStream(state) << "PeX::handleOpcodeInvocation " << guestDataPtr << "\n";
+    switch (guestDataPtr) {
+        case (1):
+            getDebugStream(state) << "PeX:: device probed for state " << state->getID() << "\n";
+            state->metadata["device_probed"] = 1;
+            // FIXME: still buggy here, several things need to be done here
+            // 1. kill all others, but our parent state --- 
+            killAllOthers(state);
+            // 2. save current state
+            // 3. switch to concrete
+            // state->switchToConcrete();
+            // 4. disable forking as well?
+            // state->disableForking();
+            // assertIRQ(state);
+            break;
+        case (2):
+            g_s2e->getExecutor()->terminateState(*state, "probe failed");
+            break;
+        default:
+            break;
+    }
+}
+
+void PeX::assertIRQ(S2EExecutionState *state) {
+    auto &m = state->metadata;
+    if (m.find("device_probed") == m.end())
+        return;
+    // if irq==-1, then we dont inject irq
+    if (irq == -1)
+        return;
+    // irq 10 is mapped to interrupt vector 239?
+    int _irq = 10;
+    int vector = irq;
+    getDebugStream(state) << "injecting IRQ " << _irq << "\n";
+    // start to inject irq
+    // PCI interrupt is routed through IO-APIC on x86_64 --
+    // get irq number from /proc/interrupts from guest os
+    // NOTE: use vector number not IRQ line number
+    state->regs()->write(CPU_OFFSET(kvm_irq), vector);
+    // will cause Forcing IRQ in libs2e/src/s2e-kvm-vcpu.cpp
+    // int interrupt_request = state->regs()->read<int>(CPU_OFFSET(interrupt_request));
+    // interrupt_request |= CPU_INTERRUPT_HARD;
+    // state->regs()->write(CPU_OFFSET(interrupt_request), interrupt_request);
+}
+
+void PeX::killAllOthers(S2EExecutionState *state) {
+    auto *executor = g_s2e->getExecutor();
+    decltype(executor->getStates()) states;
+    for (auto *s : executor->getStates())
+        if (s != state)
+            states.insert(s);
+    for (auto *s : states) {
+        std::stringstream ss;
+        ss << " terminating state " << static_cast<S2EExecutionState *>(s)->getID();
+        executor->terminateState(*s, ss.str());
+    }
+}
+
+void PeX::openAFLProxySHMBlock() {
+    while (!aflProxyShm->isOpen()) {
+        if (aflProxyShm->open(SHMOpenType::CONNECT))
+            break;
+        // sleep for 1s before retry
+        sleep(1);
+    }
+}
+void PeX::slotTranslateBlockStart(ExecutionSignal *signal, S2EExecutionState *state, TranslationBlock *tb,
+                                  uint64_t pc) {
+    if (!os_monitor->isKernelAddress(pc))
+        return;
+    signal->connect(sigc::mem_fun(*this, &PeX::slotExecuteBlockStart));
+}
+
+void PeX::slotExecuteBlockStart(S2EExecutionState *state, uint64_t pc) {
+    if (!os_monitor->isKernelAddress(pc))
+        return;
+    // do not feed afl before probed
+    if (!state->metadata["device_probed"])
+      return;
+    openAFLProxySHMBlock();
+    // send pc to AFL
+    auto *sm = aflProxyShm->getMem();
+    if (sem_wait(&sm->semr) == -1) {
+        // error wait semr
+    }
+    sm->type = 0x01;
+    memcpy(sm->data, &pc, sizeof(uint64_t));
+    if (sem_post(&sm->semw) == -1) {
+        // errror post semr
+    }
+
+}
+
+void PeX::slotOnStateKill(S2EExecutionState *state) {
+    if (!state->metadata["device_probed"])
+      return;
+    openAFLProxySHMBlock();
+    // send terminate to AFL
+    auto *sm = aflProxyShm->getMem();
+    if (sem_wait(&sm->semr) == -1) {
+        // error wait semr
+    }
+    sm->type = 0xff;
+    if (sem_post(&sm->semw) == -1) {
+        // errror post semr
+    }
+    aflProxyShm->close();
+}
+uint64_t PeX::getByteFromFile(const char* path, uint64_t offset) {
+  uint64_t ret;
+  std::ifstream in(path, std::ifstream::ate | std::ifstream::binary);
+  uint64_t fsize = in.tellg();
+  in.open(path);
+  in.seekg(offset % fsize);
+  in.read((char*)&ret, sizeof(uint64_t));
+  in.close();
+  return ret;
 }
 
 } // namespace plugins

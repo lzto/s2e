@@ -185,6 +185,10 @@ public:
 
     static bool findFile(const std::string &dataDir, const std::string &name, std::string &ret);
 
+    decltype(auto) getStates() {
+        return states;
+    };
+
 protected:
     void updateClockScaling();
 

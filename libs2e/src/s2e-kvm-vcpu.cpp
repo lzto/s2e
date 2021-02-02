@@ -20,6 +20,8 @@
 /// SOFTWARE.
 ///
 
+//#define SE_KVM_DEBUG_IRQ 1
+
 #include <inttypes.h>
 #include <memory.h>
 
@@ -255,9 +257,9 @@ void VCPU::coroutineFcn(void *opaque) {
 
 #ifdef SE_KVM_DEBUG_IRQ
         if (env->interrupt_request & CPU_INTERRUPT_HARD) {
-            printf("Handling IRQ %d req=%#x hflags=%x hflags2=%#x mflags=%#lx tpr=%#x esp=%#lx signal=%d\n",
-                   env->kvm_irq, env->interrupt_request, env->hflags, env->hflags2, (uint64_t) env->mflags, env->v_tpr,
-                   (uint64_t) env->regs[R_ESP], g_signal_pending);
+            printf("Handling IRQ %d req=%#x hflags=%x hflags2=%#x mflags=%#lx tpr=%#x esp=%#lx\n", env->kvm_irq,
+                   env->interrupt_request, env->hflags, env->hflags2, (uint64_t) env->mflags, env->v_tpr,
+                   (uint64_t) env->regs[R_ESP]);
         }
 #endif
 

@@ -27,6 +27,7 @@ add_subdirectory(demos)
 add_subdirectory(s2ecmd)
 add_subdirectory(s2eget)
 add_subdirectory(s2eput)
+add_subdirectory(tellpex)
 
 install(FILES include/s2e/s2e.h
               include/s2e/opcodes.h

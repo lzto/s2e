@@ -270,8 +270,9 @@ static void handlerTraceMmioAccess(Executor *executor, ExecutionState *state, kl
 
     klee::ref<Expr> value = args[1];
     unsigned size = cast<klee::ConstantExpr>(args[2])->getZExtValue();
+    int isSymb = g_symbolicMemoryHook.symbolic(s2eState, nullptr, physAddress, size);
 
-    if (!g_symbolicMemoryHook.symbolic(s2eState, nullptr, physAddress, size)) {
+    if (!isSymb) {
         state->bindLocal(target, value);
         return;
     }
@@ -279,8 +280,21 @@ static void handlerTraceMmioAccess(Executor *executor, ExecutionState *state, kl
     bool isWrite = cast<klee::ConstantExpr>(args[3])->getZExtValue();
 
     if (isWrite) {
+#if 1
+        bool callOrig = true;
+        if (isSymb) {
+            callOrig = g_symbolicMemoryHook.write(s2eState, nullptr, physAddress, resizedValue, SYMB_MMIO);
+        }
+
+        if (callOrig) {
+            state->toConstant(resizedValue, "Symbolic MMIO value");
+        }
+
+        state->bindLocal(target, klee::ConstantExpr::create(callOrig, klee::Expr::Int64));
+#else
         g_symbolicMemoryHook.write(s2eState, nullptr, physAddress, resizedValue, SYMB_MMIO);
         state->bindLocal(target, value);
+#endif
     } else {
         klee::ref<Expr> ret = g_symbolicMemoryHook.read(s2eState, nullptr, physAddress, resizedValue, SYMB_MMIO);
         assert(ret->getWidth() == resizedValue->getWidth());
