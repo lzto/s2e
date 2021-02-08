@@ -246,6 +246,14 @@ int PeX::fallsIntoMMIOBar(S2EExecutionState *state, uint64_t physAddr) {
     return -1;
 }
 
+uint64_t PeX::getBarLowAddr(S2EExecutionState *state, int barid) {
+    assert((barid >= 0) && (barid < 7));
+    auto &pci_header = getPCIHeader(state);
+    uint32_t *bar = &(pci_header.reg[PCI_CONFIG_DATA_REG_BAR0]);
+    auto barlo = (uint64_t)(bar[barid]) & 0xFFFFFFF0;
+    return barlo;
+}
+
 int PeX::fallsIntoPIOBar(S2EExecutionState *state, uint64_t physAddr) {
     auto &pci_header = getPCIHeader(state);
     uint32_t *bar = &(pci_header.reg[PCI_CONFIG_DATA_REG_BAR0]);
@@ -430,9 +438,9 @@ KleeExprRef PeX::createExpressionPort(S2EExecutionState *state, uint64_t address
     uint32_t reg_pci_cfg_addr = getPortIORegister(state, PCI_CONFIG_ADDRESS_PORT);
     // auto function = FUN_ADDR(reg_pci_cfg_addr);
     std::stringstream ss;
-    ss << "PCI device @ " << hexval(reg_pci_cfg_addr) << " pio read ";
+    // ss << "PCI device @ " << hexval(reg_pci_cfg_addr) << " pio read ";
     uint8_t reg = REG_ADDR(reg_pci_cfg_addr);
-    ss << hexval(address) << " size " << size << " pc=" << hexval(state->regs()->getPc());
+    ss << "pex symdev pio read @ " << hexval(address) << " size " << size << " pc=" << hexval(state->regs()->getPc());
 
     if (!isOurDevice(state))
         goto end;
@@ -519,8 +527,12 @@ end : { return klee::ExtractExpr::create(klee::ConstantExpr::create(concreteValu
 KleeExprRef PeX::createExpressionMMIO(S2EExecutionState *state, uint64_t address, unsigned size,
                                       uint64_t concreteValue) {
     std::stringstream ss;
-    ss << "PeX::createExpressionMMIO BAR MMIO @ ";
-    ss << hexval(address) << " size " << size << " pc=" << hexval(state->regs()->getPc());
+    int bar = fallsIntoMMIOBar(state, address);
+    assert(bar != -1);
+    auto barLowAddr = getBarLowAddr(state, bar);
+    auto baraddr = address - barLowAddr;
+    ss << "pex symdev bar " << bar << " mmio @ " << hexval(baraddr) << " size " << size
+       << " pc=" << hexval(state->regs()->getPc());
     getDebugStream(state) << ss.str() << "\n";
     if (state->metadata["device_probed"]) {
         uint64_t ret;
@@ -846,6 +858,8 @@ void PeX::handleOpcodeInvocation(S2EExecutionState *state, uint64_t guestDataPtr
         case (1):
             getDebugStream(state) << "PeX:: device probed for state " << state->getID() << "\n";
             state->metadata["device_probed"] = 1;
+            // generate output here
+            generateTestCase(state);
             // FIXME: still buggy here, several things need to be done here
             // 1. kill all others, but our parent state ---
             killAllOthers(state);
@@ -884,6 +898,31 @@ void PeX::assertIRQ(S2EExecutionState *state) {
     // int interrupt_request = state->regs()->read<int>(CPU_OFFSET(interrupt_request));
     // interrupt_request |= CPU_INTERRUPT_HARD;
     // state->regs()->write(CPU_OFFSET(interrupt_request), interrupt_request);
+}
+
+///
+/// create test case for this state
+///
+void PeX::generateTestCase(S2EExecutionState *state) {
+    getDebugStream(state) << "Generate Test Case:\n";
+    klee::ArrayVec symbObjects = state->symbolics;
+    klee::ConstraintManager constraints = state->constraints();
+    klee::Solver *solver = state->solver()->solver;
+    klee::Query query(constraints, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
+    std::vector<std::vector<unsigned char>> concreteObjects;
+    if (!solver->getInitialValues(query, symbObjects, concreteObjects)) {
+        getDebugStream(state) << "Could not get symbolic solution\n";
+        return;
+    }
+    getDebugStream(state) << "Solved!\n";
+    for (unsigned i = 0; i < symbObjects.size(); ++i) {
+        getDebugStream(state) << symbObjects[i]->getName() << "\n";
+        for (auto c : concreteObjects[i])
+            getDebugStream(state) << hexval(c) << "\n";
+    }
+
+    // or use concolics???
+    // Assignment assignment = *state->concolics;
 }
 
 void PeX::killAllOthers(S2EExecutionState *state) {

@@ -164,6 +164,8 @@ private:
 #endif
     void assertIRQ(S2EExecutionState *);
     void killAllOthers(S2EExecutionState *);
+    void generateTestCase(S2EExecutionState *);
+    uint64_t getBarLowAddr(S2EExecutionState *, int barid);
 };
 
 } // namespace plugins
