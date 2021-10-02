@@ -759,8 +759,8 @@ void S2EExecutor::doLoadBalancing() {
     m_inLoadBalancing = false;
 }
 
-//FIXME: there is a race condition that could lead to crash
-//when pex is trying to kill a state while this callback is trying to switch state this could cause problem
+// FIXME: there is a race condition that could lead to crash
+// when pex is trying to kill a state while this callback is trying to switch state this could cause problem
 void S2EExecutor::stateSwitchTimerCallback(void *opaque) {
     S2EExecutor *c = (S2EExecutor *) opaque;
 
@@ -834,7 +834,7 @@ void S2EExecutor::doStateSwitch(S2EExecutionState *oldState, S2EExecutionState *
         // XXX: specify which state should be used
         s2e_kvm_save_device_state();
 
-        m_s2e->getInfoStream(oldState) << "m_timersState="<<hexval(oldState->m_timersState)<<"\n";
+        m_s2e->getInfoStream(oldState) << "m_timersState=" << hexval(oldState->m_timersState) << "\n";
         *oldState->m_timersState = timers_state;
 
         oldState->m_registers.saveConcreteState();

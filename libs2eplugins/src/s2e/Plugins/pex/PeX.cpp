@@ -126,9 +126,9 @@ void PeX::pluginInit2(S2EExecutionState *state) {
     // Status and Command
     uint16_t reg_status = 0;
     if (use_capability)
-      reg_status |= 1<<4;
+        reg_status |= 1 << 4;
     uint16_t reg_cmd = 0;
-    pci_header.reg[PCI_CONFIG_DATA_REG_1] = (reg_status<<16) | reg_cmd;
+    pci_header.reg[PCI_CONFIG_DATA_REG_1] = (reg_status << 16) | reg_cmd;
     // Class code/Subclass
     pci_header.reg[PCI_CONFIG_DATA_REG_2] = reg_class;
     // header type need to be zero
@@ -136,25 +136,25 @@ void PeX::pluginInit2(S2EExecutionState *state) {
     // card bus ptr
     pci_header.reg[PCI_CONFIG_DATA_REG_A] = 0xffffffff;
     // Subsystem ID, Subsystem Vendor ID
-    pci_header.reg[PCI_CONFIG_DATA_REG_B] = (reg_sub_pid<<16) | reg_sub_vid;
+    pci_header.reg[PCI_CONFIG_DATA_REG_B] = (reg_sub_pid << 16) | reg_sub_vid;
     // expansion rom
     pci_header.reg[PCI_CONFIG_DATA_REG_C] = 0xffffffff;
     // Reserved	Capabilities Pointers
     if (use_capability) {
-      // capability pointer are last 8 bits
-      // we want the capability list offset to be put at 0x50 of pci_header.reg
-      // linux/drivers/pci/pci.c PCI_CAPABILITY_LIST, __pci_bus_find_cap_start
-      int cap_offset = 0x34;
-      pci_header.reg[PCI_CONFIG_DATA_REG_D] = 0xffffff00 | cap_offset;
-      // set MSI id
-      cap_offset = 0x60; // the next offset is at 0x60
-      pci_header.reg[cap_offset] = 0x00000005 | (cap_offset << 8);
-      // set MSI-X id
-      pci_header.reg[cap_offset] = 0x00000011 | (0xff<<8);
-      // use offset 0x1000 at bar 4 as MSI-X table
-      pci_header.reg[cap_offset+1] = (0x1000 << 3) | 4;
+        // capability pointer are last 8 bits
+        // we want the capability list offset to be put at 0x50 of pci_header.reg
+        // linux/drivers/pci/pci.c PCI_CAPABILITY_LIST, __pci_bus_find_cap_start
+        int cap_offset = 0x34;
+        pci_header.reg[PCI_CONFIG_DATA_REG_D] = 0xffffff00 | cap_offset;
+        // set MSI id
+        cap_offset = 0x60; // the next offset is at 0x60
+        pci_header.reg[cap_offset] = 0x00000005 | (cap_offset << 8);
+        // set MSI-X id
+        pci_header.reg[cap_offset] = 0x00000011 | (0xff << 8);
+        // use offset 0x1000 at bar 4 as MSI-X table
+        pci_header.reg[cap_offset + 1] = (0x1000 << 3) | 4;
     } else {
-      pci_header.reg[PCI_CONFIG_DATA_REG_D] = 0xffffffff;
+        pci_header.reg[PCI_CONFIG_DATA_REG_D] = 0xffffffff;
     }
     // Reserved -- always concrete
     pci_header.reg[PCI_CONFIG_DATA_REG_E] = 0xffffffff;
@@ -318,7 +318,7 @@ void PeX::configBAR(S2EExecutionState *state, uint32_t reg, uint32_t value) {
     auto baridx = reg - PCI_CONFIG_DATA_REG_BAR0;
     getDebugStream(state) << " PeX .. config BAR[" << baridx << "] = " << hexval(value) << "\n";
     auto &pci_header = getPCIHeader(state);
-    assert((reg>=0) && (reg<PCI_HEADER_REG_SIZE));
+    assert((reg >= 0) && (reg < PCI_HEADER_REG_SIZE));
 
     if (value == 0xffffffff) {
         // pio bar
@@ -405,7 +405,7 @@ void PeX::slotOnPortAccess(S2EExecutionState *state, KleeExprRef port, KleeExprR
                     configBAR(state, regaddr, cvalue);
                 } else {
                     // other registers ----
-                    assert((regaddr>=0) && (regaddr<PCI_HEADER_REG_SIZE));
+                    assert((regaddr >= 0) && (regaddr < PCI_HEADER_REG_SIZE));
                     pci_header.reg[regaddr] = cvalue;
                 }
                 break;
@@ -900,7 +900,7 @@ void PeX::handleOpcodeInvocation(S2EExecutionState *state, uint64_t guestDataPtr
         case (2):
             state->setStateSwitchForbidden(true);
             g_s2e->getExecutor()->terminateState(*state, "probe failed");
-	          assert(state->isZombie());
+            assert(state->isZombie());
             break;
         default:
             break;
