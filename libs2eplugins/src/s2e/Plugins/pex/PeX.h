@@ -91,6 +91,11 @@ private:
 
     uint32_t reg_vid;
     uint32_t reg_pid;
+    uint32_t reg_sub_vid;
+    uint32_t reg_sub_pid;
+    uint32_t reg_class;
+
+    bool use_capability = false;
 
     // inject irq per xxx instructions
     uint32_t m_inject_irq_per_xxx_ins = 1000000;
@@ -113,10 +118,12 @@ private:
     void dumpbar(S2EExecutionState *);
     uint32_t getPortIORegister(S2EExecutionState *state, uint32_t addr) {
         uint32_t ret;
+        assert((addr<PORT_IO_ADDRESS_SPACE_SIZE) && (addr>=0));
         memcpy(&ret, &(state->mem()->portIOMem[addr]), sizeof(uint32_t));
         return ret;
     }
     void setPortIORegister(uint32_t addr, uint32_t val) {
+        assert((addr<PORT_IO_ADDRESS_SPACE_SIZE) && (addr>=0));
         memcpy(&(g_s2e_state->mem()->portIOMem[addr]), &val, sizeof(uint32_t));
     }
     bool isOurDevice(S2EExecutionState *);
@@ -125,6 +132,7 @@ private:
     uint8_t getPCIReg8(S2EExecutionState *s, int regidx, int offset) {
         auto &pci_header = s->mem()->sfpPCIDeviceHeader;
         uint8_t reg[4];
+        assert((regidx>=0) && (regidx<PCI_HEADER_REG_SIZE));
         memcpy(reg, &pci_header.reg[regidx], sizeof(uint32_t));
         return reg[offset];
     }
@@ -132,11 +140,13 @@ private:
     uint16_t getPCIReg16(S2EExecutionState *s, int regidx, int offset) {
         auto &pci_header = s->mem()->sfpPCIDeviceHeader;
         uint16_t reg[2];
+        assert((regidx>=0) && (regidx<PCI_HEADER_REG_SIZE));
         memcpy(reg, &pci_header.reg[regidx], sizeof(uint32_t));
         return reg[offset >> 1];
     }
     uint32_t getPCIReg32(S2EExecutionState *s, int regidx) {
         auto &pci_header = s->mem()->sfpPCIDeviceHeader;
+        assert((regidx>=0) && (regidx<PCI_HEADER_REG_SIZE));
         return pci_header.reg[regidx];
     }
 

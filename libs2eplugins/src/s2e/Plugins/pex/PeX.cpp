@@ -69,6 +69,10 @@ void PeX::initialize() {
     m_printAllPortAccess = config->getBool(getConfigKey() + ".printAllPortAccess");
     reg_vid = config->getInt(getConfigKey() + ".VID");
     reg_pid = config->getInt(getConfigKey() + ".PID");
+    reg_class = config->getInt(getConfigKey() + ".CLASS");
+    reg_sub_vid = config->getInt(getConfigKey() + ".SUBVID");
+    reg_sub_pid = config->getInt(getConfigKey() + ".SUBPID");
+    use_capability = config->getBool(getConfigKey() + ".USECAPABILITY");
 
     // this is actually the vector(int) not IRQ -- since PIC will map IRQ to vector
     // and figure out ISR using IDT + vector
@@ -117,22 +121,41 @@ void PeX::pluginInit2(S2EExecutionState *state) {
     pci_header.reg[PCI_CONFIG_DATA_REG_BAR4] = bar_configuration[4][0];
     pci_header.reg[PCI_CONFIG_DATA_REG_BAR5] = bar_configuration[5][0];
 
-    // setup VID and PIC
+    // VID and PIC
     pci_header.reg[PCI_CONFIG_DATA_REG_0] = (reg_pid << 16) | reg_vid;
-    // status and command
-    pci_header.reg[PCI_CONFIG_DATA_REG_1] = 0x0000000;
+    // Status and Command
+    uint16_t reg_status = 0;
+    if (use_capability)
+      reg_status |= 1<<4;
+    uint16_t reg_cmd = 0;
+    pci_header.reg[PCI_CONFIG_DATA_REG_1] = (reg_status<<16) | reg_cmd;
     // Class code/Subclass
-    pci_header.reg[PCI_CONFIG_DATA_REG_2] = 0x2000000;
+    pci_header.reg[PCI_CONFIG_DATA_REG_2] = reg_class;
     // header type need to be zero
     pci_header.reg[PCI_CONFIG_DATA_REG_3] = 0;
     // card bus ptr
     pci_header.reg[PCI_CONFIG_DATA_REG_A] = 0xffffffff;
     // Subsystem ID, Subsystem Vendor ID
-    pci_header.reg[PCI_CONFIG_DATA_REG_B] = 0xffffffff;
+    pci_header.reg[PCI_CONFIG_DATA_REG_B] = (reg_sub_pid<<16) | reg_sub_vid;
     // expansion rom
     pci_header.reg[PCI_CONFIG_DATA_REG_C] = 0xffffffff;
     // Reserved	Capabilities Pointers
-    pci_header.reg[PCI_CONFIG_DATA_REG_D] = 0xffffffff;
+    if (use_capability) {
+      // capability pointer are last 8 bits
+      // we want the capability list offset to be put at 0x50 of pci_header.reg
+      // linux/drivers/pci/pci.c PCI_CAPABILITY_LIST, __pci_bus_find_cap_start
+      int cap_offset = 0x34;
+      pci_header.reg[PCI_CONFIG_DATA_REG_D] = 0xffffff00 | cap_offset;
+      // set MSI id
+      cap_offset = 0x60; // the next offset is at 0x60
+      pci_header.reg[cap_offset] = 0x00000005 | (cap_offset << 8);
+      // set MSI-X id
+      pci_header.reg[cap_offset] = 0x00000011 | (0xff<<8);
+      // use offset 0x1000 at bar 4 as MSI-X table
+      pci_header.reg[cap_offset+1] = (0x1000 << 3) | 4;
+    } else {
+      pci_header.reg[PCI_CONFIG_DATA_REG_D] = 0xffffffff;
+    }
     // Reserved -- always concrete
     pci_header.reg[PCI_CONFIG_DATA_REG_E] = 0xffffffff;
     // PCI devices are always connected to INT PIN 2 in QEMU
@@ -295,6 +318,8 @@ void PeX::configBAR(S2EExecutionState *state, uint32_t reg, uint32_t value) {
     auto baridx = reg - PCI_CONFIG_DATA_REG_BAR0;
     getDebugStream(state) << " PeX .. config BAR[" << baridx << "] = " << hexval(value) << "\n";
     auto &pci_header = getPCIHeader(state);
+    assert((reg>=0) && (reg<PCI_HEADER_REG_SIZE));
+
     if (value == 0xffffffff) {
         // pio bar
         // pci_header.reg[reg] = BAR_HMASK | 0x01;
@@ -380,6 +405,7 @@ void PeX::slotOnPortAccess(S2EExecutionState *state, KleeExprRef port, KleeExprR
                     configBAR(state, regaddr, cvalue);
                 } else {
                     // other registers ----
+                    assert((regaddr>=0) && (regaddr<PCI_HEADER_REG_SIZE));
                     pci_header.reg[regaddr] = cvalue;
                 }
                 break;
@@ -451,18 +477,19 @@ KleeExprRef PeX::createExpressionPort(S2EExecutionState *state, uint64_t address
 
     switch (reg) {
         case PCI_CONFIG_DATA_REG_0:
+        case PCI_CONFIG_DATA_REG_1:
         case PCI_CONFIG_DATA_REG_2: // class
         case PCI_CONFIG_DATA_REG_3:
         case PCI_CONFIG_DATA_REG_A:
         case PCI_CONFIG_DATA_REG_B:
         case PCI_CONFIG_DATA_REG_C:
+        case PCI_CONFIG_DATA_REG_D:
         case PCI_CONFIG_DATA_REG_E:
         case PCI_CONFIG_DATA_REG_F: {
             ss << " sym=no\n";
             getDebugStream(g_s2e_state) << ss.str();
             goto concend;
         }
-
 #if 0
         case PCI_CONFIG_DATA_REG_BAR0: {
             ss << " sym=yes";
@@ -485,16 +512,15 @@ KleeExprRef PeX::createExpressionPort(S2EExecutionState *state, uint64_t address
             return klee::ExtractExpr::create(klee::ConstantExpr::create(pci_header.reg[reg], 64), 0, size * 8);
 #endif
         }
-        case PCI_CONFIG_DATA_REG_1:
-        // FIXME: capabilities pointer is located at bit7~0, some devices implement MSI(-X) so need to consider
-        // case PCI_CONFIG_DATA_REG_2: // class
-        // this as well
-        case PCI_CONFIG_DATA_REG_D:
+
         default: {
-            ss << " sym=yes\n";
-            goto symend;
+            // ss << " sym=yes\n";
+            // goto symend;
+            ss << "sym=no\n";
+            goto concend;
         }
     }
+/*
 symend : {
 #if 0
     ConcreteArray concolicValue;
@@ -510,6 +536,7 @@ symend : {
     return state->createSymbolicValue(ss.str(), size * 8);
 #endif
 }
+*/
 concend : {
     if (size == 1) {
         return klee::ExtractExpr::create(klee::ConstantExpr::create(getPCIReg8(state, reg, cfc_offset), 8), 0,
@@ -871,7 +898,9 @@ void PeX::handleOpcodeInvocation(S2EExecutionState *state, uint64_t guestDataPtr
             // assertIRQ(state);
             break;
         case (2):
+            state->setStateSwitchForbidden(true);
             g_s2e->getExecutor()->terminateState(*state, "probe failed");
+	          assert(state->isZombie());
             break;
         default:
             break;
@@ -920,6 +949,7 @@ void PeX::generateTestCase(S2EExecutionState *state) {
         for (auto c : concreteObjects[i])
             getDebugStream(state) << hexval(c) << "\n";
     }
+    getDebugStream(state) << "End of solution\n";
 
     // or use concolics???
     // Assignment assignment = *state->concolics;

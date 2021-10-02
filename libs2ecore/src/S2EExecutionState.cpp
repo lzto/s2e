@@ -98,6 +98,7 @@ S2EExecutionState::~S2EExecutionState() {
     // delete m_deviceState;
 
     delete m_timersState;
+    m_timersState = NULL;
 }
 
 void S2EExecutionState::assignGuid(uint64_t guid) {

@@ -180,6 +180,11 @@ namespace {
     SinglePathMode("single-path-mode",
             cl::desc("Faster TLB, but forces single path execution"),
             cl::init(false));
+
+    cl::opt<unsigned>
+    SchedInterval("s2e-sched-interval",
+            cl::desc("reschedule state interval in ms, default is 100ms"),
+            cl::init(100));
 }
 
 //The logs may be flooded with messages when switching execution mode.
@@ -754,6 +759,8 @@ void S2EExecutor::doLoadBalancing() {
     m_inLoadBalancing = false;
 }
 
+//FIXME: there is a race condition that could lead to crash
+//when pex is trying to kill a state while this callback is trying to switch state this could cause problem
 void S2EExecutor::stateSwitchTimerCallback(void *opaque) {
     S2EExecutor *c = (S2EExecutor *) opaque;
 
@@ -772,12 +779,12 @@ void S2EExecutor::stateSwitchTimerCallback(void *opaque) {
         }
     }
 
-    libcpu_mod_timer(c->m_stateSwitchTimer, libcpu_get_clock_ms(host_clock) + 100);
+    libcpu_mod_timer(c->m_stateSwitchTimer, libcpu_get_clock_ms(host_clock) + SchedInterval);
 }
 
 void S2EExecutor::initializeStateSwitchTimer() {
     m_stateSwitchTimer = libcpu_new_timer_ms(host_clock, &stateSwitchTimerCallback, this);
-    libcpu_mod_timer(m_stateSwitchTimer, libcpu_get_clock_ms(host_clock) + 100);
+    libcpu_mod_timer(m_stateSwitchTimer, libcpu_get_clock_ms(host_clock) + SchedInterval);
 }
 
 void S2EExecutor::resetStateSwitchTimer() {
@@ -827,6 +834,7 @@ void S2EExecutor::doStateSwitch(S2EExecutionState *oldState, S2EExecutionState *
         // XXX: specify which state should be used
         s2e_kvm_save_device_state();
 
+        m_s2e->getInfoStream(oldState) << "m_timersState="<<hexval(oldState->m_timersState)<<"\n";
         *oldState->m_timersState = timers_state;
 
         oldState->m_registers.saveConcreteState();
@@ -1606,6 +1614,7 @@ void S2EExecutor::notifyBranch(ExecutionState &state) {
 
     cpu_disable_ticks();
     s2e_kvm_save_device_state();
+    assert(s2eState->m_timersState && " m_timersState is NULL!");
     *s2eState->m_timersState = timers_state;
     cpu_enable_ticks();
 }

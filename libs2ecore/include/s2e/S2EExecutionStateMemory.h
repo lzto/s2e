@@ -36,8 +36,12 @@
 #define PORT_IO_ADDRESS_SPACE_LOW 0
 #define PORT_IO_ADDRESS_SPACE_HIGH 0xffff
 
+// from qemu/include/hw/pci/pci.h
+// size of the standard PCIe config space : 4KB
+#define PCI_HEADER_REG_SIZE 0x1000
+
 typedef struct PCI_HEADER {
-    uint32_t reg[0x10];
+    uint32_t reg[PCI_HEADER_REG_SIZE];
 } PCI_HEADER;
 
 namespace s2e {
