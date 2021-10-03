@@ -152,13 +152,13 @@ void PeX::pluginInit2(S2EExecutionState *state) {
         // setup MSI-X
         cap_offset = cap_offset_next;
         cap_offset_next = 0x00;
-        //pci_header.reg[cap_offset >> 2] = 0x00010011 | (cap_offset_next << 8);
+        // pci_header.reg[cap_offset >> 2] = 0x00010011 | (cap_offset_next << 8);
         pci_header.reg[cap_offset >> 2] = 0x00ff0011 | (cap_offset_next << 8);
         // use offset 0x100 at MMIO bar 4 as MSI-X table
         // the table is at 256 offset so bar 4 should be at least 4k
         pci_header.reg[(cap_offset >> 2) + 1] = (0x100 << 3) | 4;
-        //FIXME: for MSI-X we need to set the table concrete, making the bar 
-        //symbolic will not work
+        // FIXME: for MSI-X we need to set the table concrete, making the bar
+        // symbolic will not work
     } else {
         pci_header.reg[PCI_CONFIG_DATA_REG_D] = 0xffffffff;
     }
@@ -186,10 +186,10 @@ bool PeX::isPortSymbolic(S2EExecutionState *state, uint16_t port) {
             break;
     }
     // port falls into bar mapped to IO address space
-    if (fallsIntoPIOBar(state, port)!=-1) {
+    if (fallsIntoPIOBar(state, port) != -1) {
         getDebugStream(state) << " PeX ... port access to mapped bar, port " << hexval(port) << "\n";
         return true;
-     }
+    }
     return false;
 }
 
@@ -404,8 +404,7 @@ void PeX::slotOnPortAccess(S2EExecutionState *state, KleeExprRef port, KleeExprR
                                       << hexval(reg) << "\n";
                 break;
             }
-            case PCI_CONFIG_DATA_PORT ... PCI_CONFIG_DATA_PORT_END:
-            {
+            case PCI_CONFIG_DATA_PORT ... PCI_CONFIG_DATA_PORT_END: {
                 uint32_t reg_pci_cfg_addr = getPortIORegister(state, PCI_CONFIG_ADDRESS_PORT);
                 auto regaddr = REG_ADDR(reg_pci_cfg_addr);
                 if ((regaddr >= PCI_CONFIG_DATA_REG_BAR0) && (regaddr <= PCI_CONFIG_DATA_REG_BAR5)) {
@@ -414,22 +413,22 @@ void PeX::slotOnPortAccess(S2EExecutionState *state, KleeExprRef port, KleeExprR
                     // other registers ----
                     assert((regaddr >= 0) && (regaddr < PCI_HEADER_REG_SIZE));
                     switch (value->getWidth()) {
-                      case(8): {
-                        pci_header.reg[regaddr] &= 0xffffff00;
-                        pci_header.reg[regaddr] |= cvalue;
-                        break;
-                      }
-                      case(16): {
-                        pci_header.reg[regaddr] &= 0xffff0000;
-                        pci_header.reg[regaddr] |= cvalue;
-                        break;
-                      }
-                      case(32): {
-                        pci_header.reg[regaddr] = cvalue;
-                        break;
-                      }
-                      default:
-                        assert(0);
+                        case (8): {
+                            pci_header.reg[regaddr] &= 0xffffff00;
+                            pci_header.reg[regaddr] |= cvalue;
+                            break;
+                        }
+                        case (16): {
+                            pci_header.reg[regaddr] &= 0xffff0000;
+                            pci_header.reg[regaddr] |= cvalue;
+                            break;
+                        }
+                        case (32): {
+                            pci_header.reg[regaddr] = cvalue;
+                            break;
+                        }
+                        default:
+                            assert(0);
                     }
                 }
                 break;
@@ -483,18 +482,19 @@ template <typename T> static void SymbHwGetConcolicVector(T in, unsigned size, C
 KleeExprRef PeX::createExpressionPort(S2EExecutionState *state, uint64_t address, unsigned size,
                                       uint64_t concreteValue) {
     auto &pci_header = getPCIHeader(state);
-    //the PCI configuration register is 32 bit, so the offset here can be used to address inside this 32bit
+    // the PCI configuration register is 32 bit, so the offset here can be used to address inside this 32bit
     int cfc_offset = address - 0xcfc;
 
     uint32_t reg_pci_cfg_addr = getPortIORegister(state, PCI_CONFIG_ADDRESS_PORT);
     // auto function = FUN_ADDR(reg_pci_cfg_addr);
     std::stringstream ss;
     // ss << "PCI device @ " << hexval(reg_pci_cfg_addr) << " pio read ";
-    uint8_t reg =  REG_ADDR(reg_pci_cfg_addr);
-    ss << "pex symdev pio read @ " << hexval(address) << " size " << size << " pc=" << hexval(state->regs()->getPc()) << " Reg: " <<hexval(reg) << " cfc_offset=" << hexval(cfc_offset);
+    uint8_t reg = REG_ADDR(reg_pci_cfg_addr);
+    ss << "pex symdev pio read @ " << hexval(address) << " size " << size << " pc=" << hexval(state->regs()->getPc())
+       << " Reg: " << hexval(reg) << " cfc_offset=" << hexval(cfc_offset);
 
     // PIO bar access does not need to actually set PCI_CFG_ADDR and PCI_CFG_DATA
-    if (fallsIntoPIOBar(state, address)!=-1) {
+    if (fallsIntoPIOBar(state, address) != -1) {
         ss << " PIO Bar sym=yes\n";
         getDebugStream(g_s2e_state) << ss.str();
         goto symend;
