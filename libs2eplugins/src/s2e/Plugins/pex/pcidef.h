@@ -33,6 +33,7 @@
 #define BUS_ADDR(X) ((X >> 16) & 0xFF)
 #define DEV_ADDR(X) ((X >> 11) & 0x1F)
 #define FUN_ADDR(X) ((X >> 8) & 0x03)
+// this is register offset in 32 bit granularity
 #define REG_ADDR(X) ((X >> 2) & 0x3F)
 
 // According to PCI® 3.0 base spec, I/O space must not consume more than 256 bytes per I/O Base Address register and the

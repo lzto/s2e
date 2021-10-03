@@ -320,6 +320,7 @@ public:
     uint8_t portIOMem[PORT_IO_ADDRESS_SPACE_SIZE];
     /// per state PCI device header for our symbolic device
     /// version 1 size is 0x40
+    /// we are putting more stuff here so it is larger than 0x40
     PCI_HEADER sfpPCIDeviceHeader;
 };
 
