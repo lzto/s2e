@@ -144,16 +144,20 @@ void PeX::pluginInit2(S2EExecutionState *state) {
         // capability pointer are last 8 bits
         // we want the capability list offset to be put at 0x50 of pci_header.reg
         // linux/drivers/pci/pci.c PCI_CAPABILITY_LIST, __pci_bus_find_cap_start
-        int cap_offset = 0x90; // this is byte address
+        // setup Express 
+        int cap_offset = 0x50; // this is byte address
+        int cap_offset_next = 0x70;
         pci_header.reg[PCI_CONFIG_DATA_REG_D] = 0xffffff00 | cap_offset;
+        pci_header.reg[cap_offset>>2] = 0x00000010 | (cap_offset_next << 8);
         // setup MSI
-        int cap_offset_next = 0xb0; // the next offset is at 0xb0
+        cap_offset = cap_offset_next;
+        cap_offset_next = 0x90; // the next offset is at 0x90
         pci_header.reg[cap_offset >> 2] = 0x00000005 | (cap_offset_next << 8);
         // setup MSI-X
         cap_offset = cap_offset_next;
         cap_offset_next = 0x00;
         // pci_header.reg[cap_offset >> 2] = 0x00010011 | (cap_offset_next << 8);
-        pci_header.reg[cap_offset >> 2] = 0x00ff0011 | (cap_offset_next << 8);
+        pci_header.reg[cap_offset >> 2] = 0x00000011 | (cap_offset_next << 8);
         // use offset 0x100 at MMIO bar 4 as MSI-X table
         // the table is at 256 offset so bar 4 should be at least 4k
         pci_header.reg[(cap_offset >> 2) + 1] = (0x100 << 3) | 4;
@@ -490,15 +494,20 @@ KleeExprRef PeX::createExpressionPort(S2EExecutionState *state, uint64_t address
     std::stringstream ss;
     // ss << "PCI device @ " << hexval(reg_pci_cfg_addr) << " pio read ";
     uint8_t reg = REG_ADDR(reg_pci_cfg_addr);
-    ss << "pex symdev pio read @ " << hexval(address) << " size " << size << " pc=" << hexval(state->regs()->getPc())
-       << " Reg: " << hexval(reg) << " cfc_offset=" << hexval(cfc_offset);
 
     // PIO bar access does not need to actually set PCI_CFG_ADDR and PCI_CFG_DATA
-    if (fallsIntoPIOBar(state, address) != -1) {
-        ss << " PIO Bar sym=yes\n";
+    int bar = fallsIntoPIOBar(state, address);
+    if (bar != -1) {
+        auto barLowAddr = getBarLowAddr(state, bar);
+        auto baraddr = address - barLowAddr;
+        ss << "pex symdev bar " << bar << " pio @ " << hexval(baraddr) << " size " << size
+           << " pc=" << hexval(state->regs()->getPc());
         getDebugStream(g_s2e_state) << ss.str();
         goto symend;
     }
+
+    ss << "pex symdev pio read @ " << hexval(address) << " size " << size << " pc=" << hexval(state->regs()->getPc())
+       << " Reg: " << hexval(reg) << " cfc_offset=" << hexval(cfc_offset);
 
     if (!isOurDevice(state))
         goto end;
