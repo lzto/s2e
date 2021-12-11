@@ -70,10 +70,22 @@ void PeX::initialize() {
     reg_vid = config->getInt(getConfigKey() + ".VID");
     reg_pid = config->getInt(getConfigKey() + ".PID");
     reg_class = config->getInt(getConfigKey() + ".CLASS");
+    reg_bhlc = config->getInt(getConfigKey() + ".BHLC");
+
     reg_sub_vid = config->getInt(getConfigKey() + ".SUBVID");
     reg_sub_pid = config->getInt(getConfigKey() + ".SUBPID");
     use_capability = config->getBool(getConfigKey() + ".USECAPABILITY");
 
+    // set the device location on the bus
+    n_bus = (uint8_t) config->getInt(getConfigKey() + ".SYMDEV_BUS") & 0xff;
+    if (n_bus == 0)
+        n_bus = SYMDEV_BUS;
+    n_device = (uint8_t) config->getInt(getConfigKey() + ".SYMDEV_DEV") & 0xff;
+    if (n_device == 0)
+        n_device = SYMDEV_DEV;
+    n_function = (uint8_t) config->getInt(getConfigKey() + ".SYMDEV_FUNC") & 0xff;
+    if (n_function == 0)
+        n_function = SYMDEV_FUNC;
     // this is actually the vector(int) not IRQ -- since PIC will map IRQ to vector
     // and figure out ISR using IDT + vector
     irq = config->getInt(getConfigKey() + ".interrupt");
@@ -131,27 +143,31 @@ void PeX::pluginInit2(S2EExecutionState *state) {
     pci_header.reg[PCI_CONFIG_DATA_REG_1] = (reg_status << 16) | reg_cmd;
     // Class code/Subclass
     pci_header.reg[PCI_CONFIG_DATA_REG_2] = reg_class;
-    // header type need to be zero
-    pci_header.reg[PCI_CONFIG_DATA_REG_3] = 0;
+    // BIST | Header type | Latency Timer | Cache Line Size
+    pci_header.reg[PCI_CONFIG_DATA_REG_3] = reg_bhlc;
     // card bus ptr
     pci_header.reg[PCI_CONFIG_DATA_REG_A] = 0xffffffff;
     // Subsystem ID, Subsystem Vendor ID
     pci_header.reg[PCI_CONFIG_DATA_REG_B] = (reg_sub_pid << 16) | reg_sub_vid;
-    // expansion rom
+    // expansion rom -- currently not supported
     pci_header.reg[PCI_CONFIG_DATA_REG_C] = 0xffffffff;
     // Reserved	Capabilities Pointers
     if (use_capability) {
         // capability pointer are last 8 bits
         // we want the capability list offset to be put at 0x50 of pci_header.reg
         // linux/drivers/pci/pci.c PCI_CAPABILITY_LIST, __pci_bus_find_cap_start
-        // setup Express 
+        // setup Express
         int cap_offset = 0x50; // this is byte address
         int cap_offset_next = 0x70;
         pci_header.reg[PCI_CONFIG_DATA_REG_D] = 0xffffff00 | cap_offset;
-        pci_header.reg[cap_offset>>2] = 0x00000010 | (cap_offset_next << 8);
-        // setup MSI
+        pci_header.reg[cap_offset >> 2] = 0x00000010 | (cap_offset_next << 8);
+        // setup Power cap
         cap_offset = cap_offset_next;
         cap_offset_next = 0x90; // the next offset is at 0x90
+        pci_header.reg[cap_offset >> 2] = 0x00000001 | (cap_offset_next << 8);
+        // setup MSI
+        cap_offset = cap_offset_next;
+        cap_offset_next = 0xc0; // the next offset is at 0xc0
         pci_header.reg[cap_offset >> 2] = 0x00000005 | (cap_offset_next << 8);
         // setup MSI-X
         cap_offset = cap_offset_next;
@@ -252,7 +268,10 @@ bool PeX::isOurDevice(S2EExecutionState *state) {
     uint32_t reg_pci_cfg_addr = getPortIORegister(state, PCI_CONFIG_ADDRESS_PORT);
     uint8_t bus = BUS_ADDR(reg_pci_cfg_addr);
     uint8_t device = DEV_ADDR(reg_pci_cfg_addr);
-    if ((bus == SYMDEV_BUS) && (device == SYMDEV_DEV)) {
+    uint8_t function = FUN_ADDR(reg_pci_cfg_addr);
+    if ((bus == n_bus) && (device == n_device) && (((1u << function) & n_function) != 0)) {
+        getDebugStream(state) << " isOurDevice:  bus:" << hexval(bus) << "  device:" << hexval(device)
+                              << "  function:" << hexval(function) << "\n";
         return true;
     }
     return false;

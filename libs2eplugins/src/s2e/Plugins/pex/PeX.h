@@ -28,6 +28,8 @@ struct XXX {
 // we want a fixed address in the PCI system
 #define SYMDEV_BUS 0x00
 #define SYMDEV_DEV 0x1b
+// this is mask -- support up to 8 functions
+#define SYMDEV_FUNC 0x01
 
 namespace s2e {
 namespace plugins {
@@ -94,6 +96,13 @@ private:
     uint32_t reg_sub_vid;
     uint32_t reg_sub_pid;
     uint32_t reg_class;
+    // register at 0x3 (offset 0xc)
+    uint32_t reg_bhlc;
+
+    // device address provided by user or pre-defined
+    uint8_t n_bus;
+    uint8_t n_device;
+    uint8_t n_function;
 
     bool use_capability = false;
 
